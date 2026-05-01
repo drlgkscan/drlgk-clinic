@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a3a6b">
+<title>Billing — Dr. L. G. Krishna Ultrasound Clinic</title>
+
+<!-- ============ CONFIG ============ -->
+<script>
+  const API_URL = 'https://script.google.com/macros/s/AKfycbwGY8fS6H2HIThJjwtF5dJatVFdbjnVkAbRLBJ6tW2uhsM5Yql4sAfQXPUxniG5grH_/exec';
+  const API_TOKEN = 'drlgk-2026-clinic-secret-x7K9pQm3vN2tL5';
+  const ACTOR = 'tablet-reception';
+  const BOOKING_URL = 'https://drlgkscan.github.io/lgk-booking/';
+</script>
+<!-- ================================= -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { font-family:'DM Sans',sans-serif; background:#f4f6fa; color:#1c2636; min-height:100vh; }
+body { padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; }
+
+.app { max-width:720px; margin:0 auto; padding:0 0 80px; }
+
+header.bar {
+  background:linear-gradient(135deg,#1a3a6b,#2557a7);
+  color:#fff; padding:14px 16px; position:sticky; top:0; z-index:50;
+  box-shadow:0 2px 8px rgba(0,0,0,0.15);
+}
+header.bar h1 { font-size:16px; font-weight:600; line-height:1.2; }
+header.bar .sub { font-size:11px; opacity:0.85; margin-top:2px; }
+header.bar .status-dot { float:right; width:10px; height:10px; border-radius:50%; background:#22c55e; margin-top:4px; }
+header.bar .status-dot.bad { background:#ef4444; }
+
+.section {
+  background:#fff; margin:12px; border-radius:12px; padding:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.08);
+}
+.section h2 { font-size:13px; font-weight:600; color:#1a3a6b; margin-bottom:12px; text-transform:uppercase; letter-spacing:0.5px; }
+
+.row { display:flex; gap:10px; margin-bottom:10px; }
+.row.col { flex-direction:column; gap:6px; }
+label { font-size:12px; font-weight:500; color:#5a6378; display:block; margin-bottom:4px; }
+input, select, textarea {
+  width:100%; padding:11px 12px; font-size:15px; font-family:inherit;
+  border:1.5px solid #d6dae3; border-radius:8px; background:#fff;
+  transition:border-color 0.15s;
+}
+input:focus, select:focus, textarea:focus { outline:none; border-color:#2557a7; }
+input[readonly] { background:#f4f6fa; color:#5a6378; }
+
+button {
+  font-family:inherit; font-size:15px; font-weight:600; padding:13px 18px;
+  border:none; border-radius:10px; cursor:pointer; transition:opacity 0.15s, transform 0.1s;
+}
+button:active { transform:scale(0.98); }
+button.primary { background:#1a3a6b; color:#fff; }
+button.success { background:#16a34a; color:#fff; }
+button.warn    { background:#e8a020; color:#fff; }
+button.ghost   { background:#fff; color:#1a3a6b; border:1.5px solid #1a3a6b; }
+button.danger  { background:#dc2626; color:#fff; }
+button:disabled { opacity:0.5; cursor:not-allowed; }
+button.full { width:100%; }
+
+.banner {
+  padding:12px 14px; border-radius:10px; margin-bottom:12px;
+  font-size:13px; line-height:1.4;
+}
+.banner.green  { background:#dcfce7; color:#15803d; border-left:4px solid #16a34a; }
+.banner.amber  { background:#fef3c7; color:#a16207; border-left:4px solid #e8a020; }
+.banner.red    { background:#fee2e2; color:#991b1b; border-left:4px solid #dc2626; }
+.banner.blue   { background:#dbeafe; color:#1e40af; border-left:4px solid #2557a7; }
+
+.patient-card {
+  background:linear-gradient(135deg,#eaf2ff,#f4f8ff);
+  border:1px solid #c8dafd; border-radius:10px; padding:12px;
+  display:flex; gap:12px; align-items:center; margin-bottom:12px;
+}
+.patient-card .photo {
+  width:60px; height:75px; background:#d8dee8; border-radius:6px;
+  background-size:cover; background-position:center; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  color:#8d95a6; font-size:10px; text-align:center;
+}
+.patient-card .info h3 { font-size:16px; color:#1a3a6b; margin-bottom:2px; }
+.patient-card .info .meta { font-size:11px; color:#5a6378; line-height:1.5; }
+
+.photo-capture-area {
+  background:#f4f6fa; border:2px dashed #c5cbd6; border-radius:10px;
+  padding:20px; text-align:center; cursor:pointer;
+  transition:border-color 0.15s, background 0.15s;
+}
+.photo-capture-area:hover { border-color:#2557a7; background:#eaf2ff; }
+.photo-capture-area .icon { font-size:36px; color:#8d95a6; margin-bottom:6px; }
+.photo-capture-area .text { font-size:13px; color:#5a6378; font-weight:500; }
+.photo-capture-area.captured {
+  border-style:solid; border-color:#16a34a; background:#dcfce7; padding:10px;
+}
+.photo-thumb { width:90px; height:115px; border-radius:8px; object-fit:cover; box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+#photoFile { display:none; }
+
+.mode-tabs { display:flex; gap:6px; margin-bottom:12px; }
+.mode-tab {
+  flex:1; padding:8px 6px; text-align:center; background:#f4f6fa; border-radius:8px;
+  font-size:12px; font-weight:600; color:#5a6378; cursor:pointer;
+  border:1.5px solid transparent;
+}
+.mode-tab.active { background:#1a3a6b; color:#fff; }
+
+.bill-summary {
+  background:#fffbf0; border:1px solid #f0d989; border-radius:10px;
+  padding:12px; margin-top:12px;
+}
+.bill-summary .line {
+  display:flex; justify-content:space-between; padding:4px 0; font-size:14px;
+}
+.bill-summary .line.total {
+  border-top:1.5px solid #c8a44a; margin-top:6px; padding-top:8px;
+  font-size:17px; font-weight:700; color:#1a3a6b;
+}
+
+.toast {
+  position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+  background:#1c2636; color:#fff; padding:11px 18px; border-radius:8px;
+  font-size:13px; box-shadow:0 4px 16px rgba(0,0,0,0.25);
+  z-index:200; opacity:0; transition:opacity 0.2s; pointer-events:none;
+}
+.toast.show { opacity:1; }
+.toast.error { background:#dc2626; }
+.toast.success { background:#16a34a; }
+
+.spinner { display:inline-block; width:16px; height:16px; border:2.5px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin 0.7s linear infinite; vertical-align:middle; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+.overlay { position:fixed; inset:0; background:rgba(28,38,54,0.6); z-index:100; display:none; align-items:center; justify-content:center; padding:20px; }
+.overlay.show { display:flex; }
+.overlay .panel { background:#fff; border-radius:12px; max-width:480px; width:100%; max-height:90vh; overflow-y:auto; padding:20px; }
+
+@media (max-width:500px) {
+  .row { flex-direction:column; gap:6px; }
+  .row.tight { flex-direction:row; gap:6px; }
+  header.bar h1 { font-size:14px; }
+  .section { margin:8px; padding:14px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<header class="bar">
+  <span class="status-dot" id="connDot" title="Backend connection"></span>
+  <h1>Dr. L. G. Krishna Ultrasound Clinic</h1>
+  <div class="sub">Billing · Tablet Reception · v1.0</div>
+</header>
+
+<div class="section" id="lookupSection">
+  <h2>Step 1 — Patient Phone</h2>
+  <div class="row">
+    <input type="tel" id="phoneInput" placeholder="10-digit phone number"
+           maxlength="10" inputmode="numeric"
+           oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);if(this.value.length===10)lookupPatient();">
+    <button class="primary" onclick="lookupPatient()" style="flex-shrink:0;">Find</button>
+  </div>
+  <div id="lookupResult"></div>
+</div>
+
+<div class="section" id="photoSection" style="display:none;">
+  <h2>Step 2 — Capture Photo</h2>
+  <div class="photo-capture-area" id="photoArea" onclick="document.getElementById('photoFile').click()">
+    <div class="icon">📷</div>
+    <div class="text">Tap to capture patient photo</div>
+  </div>
+  <input type="file" id="photoFile" accept="image/*" capture="user" onchange="onPhotoChosen(event)">
+  <div style="margin-top:10px;">
+    <button class="ghost full" id="skipPhotoBtn" onclick="skipPhoto()">Skip photo (give reason)</button>
+  </div>
+</div>
+
+<div class="section" id="billSection" style="display:none;">
+  <h2>Step 3 — Bill Details</h2>
+
+  <div class="mode-tabs">
+    <div class="mode-tab active" data-mode="standard" onclick="setUiMode('standard')">Standard</div>
+    <div class="mode-tab" data-mode="paediatric" onclick="setUiMode('paediatric')">Paediatric</div>
+    <div class="mode-tab" data-mode="elderly" onclick="setUiMode('elderly')">Elderly</div>
+  </div>
+
+  <div class="row col">
+    <label>Patient Name</label>
+    <input type="text" id="patientName" placeholder="Full name as on prescription">
+  </div>
+
+  <div class="row tight">
+    <div style="flex:1;">
+      <label>Age (years)</label>
+      <input type="number" id="patientAge" min="0" max="120" placeholder="28">
+    </div>
+    <div style="flex:1;">
+      <label>Sex</label>
+      <select id="patientSex">
+        <option value="">—</option>
+        <option value="F">Female</option>
+        <option value="M">Male</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row col">
+    <label>Address</label>
+    <input type="text" id="patientAddress" placeholder="Town / village">
+  </div>
+
+  <div class="row col" id="husbandFatherRow" style="display:none;">
+    <label>Husband / Father Name <span style="color:#dc2626;">*for OBG</span></label>
+    <input type="text" id="husbandFather" placeholder="Required for pregnancy scans">
+  </div>
+
+  <div class="row col">
+    <label>Scan Type</label>
+    <select id="scanCode" onchange="onScanCodeChange()">
+      <option value="">— select scan —</option>
+    </select>
+  </div>
+
+  <div class="row col" id="lmpRow" style="display:none;">
+    <label>LMP (Last Menstrual Period)</label>
+    <input type="date" id="lmpDate">
+  </div>
+
+  <div class="row col">
+    <label>Referring Doctor</label>
+    <select id="referringDoctor" onchange="onDoctorChange()">
+      <option value="D-000">Self / Walk-in</option>
+    </select>
+    <button class="ghost" style="margin-top:6px; font-size:13px; padding:8px;" onclick="addNewDoctorPrompt()">+ Add new referring doctor</button>
+  </div>
+
+  <h2 style="margin-top:18px;">Payment</h2>
+
+  <div class="row tight">
+    <div style="flex:1;">
+      <label>Scan Price</label>
+      <input type="number" id="scanPrice" readonly>
+    </div>
+    <div style="flex:1;">
+      <label>Additional Charges</label>
+      <input type="number" id="additionalCharges" value="0" min="0" oninput="recalcTotal()">
+    </div>
+  </div>
+
+  <div class="row tight">
+    <div style="flex:1;">
+      <label>Discount (₹)</label>
+      <input type="number" id="discount" value="0" min="0" oninput="recalcTotal()">
+    </div>
+    <div style="flex:1;">
+      <label>Payment Mode</label>
+      <select id="paymentMode" onchange="recalcTotal()">
+        <option value="Cash">Cash</option>
+        <option value="UPI">UPI</option>
+        <option value="Cash+UPI">Cash + UPI</option>
+        <option value="Pending">Pending</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row col">
+    <label><input type="checkbox" id="hasAdvance" onchange="onAdvanceToggle()"> Has advance payment</label>
+  </div>
+
+  <div class="row tight" id="advanceRow" style="display:none;">
+    <div style="flex:1;">
+      <label>Advance Amount</label>
+      <input type="number" id="advanceAmount" value="0" min="0" oninput="recalcTotal()">
+    </div>
+    <div style="flex:1;">
+      <label>Paid Now</label>
+      <input type="number" id="amountPaid" value="0" min="0" oninput="recalcTotal()">
+    </div>
+  </div>
+  <div class="row tight" id="paidNowOnlyRow">
+    <div style="flex:1;">
+      <label>Amount Paid</label>
+      <input type="number" id="amountPaidSimple" value="0" min="0" oninput="recalcTotalSimple()">
+    </div>
+  </div>
+
+  <div class="bill-summary" id="billSummary">
+    <div class="line"><span>Scan</span><span id="sumScan">₹0</span></div>
+    <div class="line"><span>Additional</span><span id="sumAdd">₹0</span></div>
+    <div class="line"><span>Discount</span><span id="sumDisc">−₹0</span></div>
+    <div class="line total"><span>Total Payable</span><span id="sumTotal">₹0</span></div>
+    <div class="line"><span>Net Paid</span><span id="sumPaid">₹0</span></div>
+    <div class="line"><span>Pending</span><span id="sumPending" style="color:#dc2626; font-weight:600;">₹0</span></div>
+  </div>
+
+  <div style="margin-top:18px; display:flex; gap:8px;">
+    <button class="success full" onclick="generateBill()" id="generateBtn">Generate Bill →</button>
+  </div>
+</div>
+
+<div class="section" id="readySection" style="display:none;">
+  <h2>Bill Generated</h2>
+  <div class="banner green">
+    <strong>✓ Saved.</strong> Bill ref: <span id="finalBillRef"></span><br>
+    Visit ID: <span id="finalVisitId"></span>
+  </div>
+  <div style="display:flex; flex-direction:column; gap:8px;">
+    <button class="primary full" onclick="downloadBillPdf()">📥 Download Bill PDF</button>
+    <button class="warn full" onclick="shareWhatsApp()">📱 Send to Patient via WhatsApp</button>
+    <button class="ghost full" onclick="printBill()">🖨 Print Bill (A4)</button>
+    <button class="ghost full" onclick="resetForNewPatient()" style="margin-top:8px;">+ Next Patient</button>
+  </div>
+</div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="addDoctorOverlay">
+  <div class="panel">
+    <h2 style="font-size:16px; color:#1a3a6b; margin-bottom:14px;">Add Referring Doctor</h2>
+    <div class="row col"><label>Name (with title)</label><input type="text" id="newDoctorName" placeholder="Dr. Anjali Kulkarni"></div>
+    <div class="row col"><label>Qualifications</label><input type="text" id="newDoctorQual" placeholder="MD (OBG)"></div>
+    <div class="row col"><label>Specialty</label>
+      <select id="newDoctorSpec">
+        <option>OBG</option><option>Paediatrics</option><option>GP</option>
+        <option>Ortho</option><option>Surgery</option><option>Other</option>
+      </select>
+    </div>
+    <div class="row col"><label>Hospital / Clinic</label><input type="text" id="newDoctorHosp"></div>
+    <div class="row col"><label>Phone</label><input type="tel" id="newDoctorPhone"></div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="ghost" style="flex:1;" onclick="closeAddDoctor()">Cancel</button>
+      <button class="primary" style="flex:1;" onclick="saveNewDoctor()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="skipPhotoOverlay">
+  <div class="panel">
+    <h2 style="font-size:16px; color:#1a3a6b; margin-bottom:14px;">Skip photo — reason</h2>
+    <div class="row col">
+      <label>Why no photo?</label>
+      <select id="skipReason">
+        <option value="">— select —</option>
+        <option value="Patient refused">Patient refused</option>
+        <option value="Newborn / infant">Newborn / infant</option>
+        <option value="Camera failed">Camera failed</option>
+        <option value="Tablet not available">Tablet not available</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button class="ghost" style="flex:1;" onclick="closeSkipPhoto()">Cancel</button>
+      <button class="warn" style="flex:1;" onclick="confirmSkipPhoto()">Skip — proceed</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const state = {
+  settings: {}, pricing: [], doctors: [],
+  patient: null, isNewPatient: true,
+  photoDataUrl: null, photoSkipReason: null,
+  uiMode: 'standard', lastBill: null
+};
+
+async function api(action, body = {}) {
+  body.action = action; body.token = API_TOKEN; body.actor = ACTOR;
+  try {
+    const r = await fetch(API_URL, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    document.getElementById('connDot').classList.remove('bad');
+    return data;
+  } catch (e) {
+    document.getElementById('connDot').classList.add('bad');
+    showToast('Connection failed: ' + e.message, 'error');
+    throw e;
+  }
+}
+
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+async function init() {
+  showToast('Loading clinic data...');
+  try {
+    const [settings, pricing, doctors] = await Promise.all([
+      api('getSettings'), api('getPricing'), api('listDoctors', { active_only: true })
+    ]);
+    state.settings = settings;
+    state.pricing = pricing;
+    state.doctors = doctors;
+    populateScanDropdown();
+    populateDoctorDropdown();
+    showToast('Ready', 'success');
+  } catch (e) {
+    showToast('Init failed — check connection', 'error');
+  }
+}
+
+function populateScanDropdown() {
+  const sel = document.getElementById('scanCode');
+  sel.innerHTML = '<option value="">— select scan —</option>';
+  const isPreg = (p) => p.is_pregnancy === true || String(p.is_pregnancy).toLowerCase() === 'true';
+  const obg = state.pricing.filter(isPreg);
+  const other = state.pricing.filter(p => !isPreg(p));
+  if (obg.length) {
+    const og = document.createElement('optgroup'); og.label = 'Pregnancy / OBG';
+    obg.forEach(p => og.appendChild(makeScanOption(p)));
+    sel.appendChild(og);
+  }
+  if (other.length) {
+    const og = document.createElement('optgroup'); og.label = 'Other Scans';
+    other.forEach(p => og.appendChild(makeScanOption(p)));
+    sel.appendChild(og);
+  }
+}
+function makeScanOption(p) {
+  const o = document.createElement('option');
+  o.value = p.scan_code;
+  o.textContent = p.scan_type + '  —  ₹' + p.price_inr;
+  o.dataset.price = p.price_inr;
+  o.dataset.preg = String(p.is_pregnancy === true || String(p.is_pregnancy).toLowerCase() === 'true');
+  o.dataset.scanType = p.scan_type;
+  return o;
+}
+function populateDoctorDropdown() {
+  const sel = document.getElementById('referringDoctor');
+  sel.innerHTML = '';
+  state.doctors.forEach(d => {
+    if (!d.doctor_id) return;
+    const o = document.createElement('option');
+    o.value = d.doctor_id;
+    o.textContent = (d.name || '?') + (d.qualifications ? ', ' + d.qualifications : '');
+    sel.appendChild(o);
+  });
+}
+
+async function lookupPatient() {
+  const phone = document.getElementById('phoneInput').value.replace(/\D/g, '');
+  if (phone.length !== 10) { showToast('Enter 10-digit phone'); return; }
+  const result = document.getElementById('lookupResult');
+  result.innerHTML = '<div class="banner blue"><span class="spinner" style="border-color:#1e40af; border-top-color:transparent;"></span> Looking up…</div>';
+  try {
+    const r = await api('lookupPatient', { phone });
+    if (r.found) {
+      state.patient = r.patient; state.isNewPatient = false;
+      let banner = `<div class="patient-card">`;
+      if (r.last_photo_url) banner += `<div class="photo" style="background-image:url('${r.last_photo_url}')"></div>`;
+      else banner += `<div class="photo">no photo</div>`;
+      banner += `<div class="info"><h3>${r.patient.name}</h3>
+                 <div class="meta">${r.patient.sex || '?'} · ${r.total_visits} previous visit${r.total_visits===1?'':'s'}
+                 ${r.patient.last_visit_date ? '<br>Last: ' + new Date(r.patient.last_visit_date).toLocaleDateString('en-IN') : ''}
+                 ${r.pending_balance > 0 ? `<br><span style="color:#dc2626;font-weight:600;">⚠ Pending balance: ₹${r.pending_balance}</span>` : ''}
+                 </div></div>`;
+      banner += `</div>`;
+      if (r.pending_followups && r.pending_followups.length > 0) {
+        banner += `<div class="banner amber"><strong>Follow-up due:</strong> ${r.pending_followups[0].description}</div>`;
+      }
+      result.innerHTML = banner;
+      document.getElementById('patientName').value = r.patient.name || '';
+      document.getElementById('patientSex').value = r.patient.sex || '';
+      document.getElementById('patientAddress').value = r.patient.address || '';
+      document.getElementById('husbandFather').value = r.patient.husband_father_name || '';
+      if (r.patient.dob) {
+        const dob = new Date(r.patient.dob);
+        const age = Math.floor((new Date() - dob) / 31557600000);
+        document.getElementById('patientAge').value = age;
+      }
+    } else {
+      state.patient = null; state.isNewPatient = true;
+      result.innerHTML = `<div class="banner blue"><strong>New patient.</strong> Fill the form below to create their record.</div>`;
+      document.getElementById('patientName').value = '';
+      document.getElementById('patientAge').value = '';
+      document.getElementById('patientSex').value = '';
+      document.getElementById('patientAddress').value = '';
+      document.getElementById('husbandFather').value = '';
+    }
+    document.getElementById('photoSection').style.display = 'block';
+    document.getElementById('billSection').style.display = 'block';
+    document.getElementById('photoSection').scrollIntoView({behavior:'smooth', block:'start'});
+  } catch (e) {
+    result.innerHTML = `<div class="banner red">Lookup failed.</div>`;
+  }
+}
+
+function onPhotoChosen(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const TARGET_W = 400, TARGET_H = 500;
+      const srcRatio = img.width / img.height;
+      const tgtRatio = TARGET_W / TARGET_H;
+      let sx, sy, sw, sh;
+      if (srcRatio > tgtRatio) { sh = img.height; sw = sh * tgtRatio; sx = (img.width - sw)/2; sy = 0; }
+      else { sw = img.width; sh = sw / tgtRatio; sx = 0; sy = (img.height - sh)/2; }
+      canvas.width = TARGET_W; canvas.height = TARGET_H;
+      canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, TARGET_W, TARGET_H);
+      state.photoDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      state.photoSkipReason = null;
+      document.getElementById('photoArea').innerHTML =
+        `<img class="photo-thumb" src="${state.photoDataUrl}"><div style="margin-top:8px; font-size:12px; color:#15803d; font-weight:600;">✓ Photo captured · tap to recapture</div>`;
+      document.getElementById('photoArea').classList.add('captured');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function skipPhoto() { document.getElementById('skipPhotoOverlay').classList.add('show'); }
+function closeSkipPhoto() { document.getElementById('skipPhotoOverlay').classList.remove('show'); }
+function confirmSkipPhoto() {
+  const reason = document.getElementById('skipReason').value;
+  if (!reason) { showToast('Pick a reason'); return; }
+  state.photoSkipReason = reason; state.photoDataUrl = null;
+  document.getElementById('photoArea').innerHTML =
+    `<div class="icon" style="color:#a16207;">⚠</div><div class="text" style="color:#a16207;">Photo skipped: ${reason}</div>`;
+  document.getElementById('photoArea').classList.add('captured');
+  document.getElementById('photoArea').style.borderColor = '#e8a020';
+  document.getElementById('photoArea').style.background = '#fef3c7';
+  closeSkipPhoto();
+}
+
+function setUiMode(m) {
+  state.uiMode = m;
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === m));
+  const form = document.getElementById('billSection');
+  if (m === 'elderly') form.style.fontSize = '17px';
+  else if (m === 'paediatric') form.style.fontSize = '14px';
+  else form.style.fontSize = '15px';
+}
+
+function onScanCodeChange() {
+  const sel = document.getElementById('scanCode');
+  const opt = sel.options[sel.selectedIndex];
+  const price = opt.dataset.price || 0;
+  const isPreg = opt.dataset.preg === 'true';
+  document.getElementById('scanPrice').value = price;
+  document.getElementById('lmpRow').style.display = isPreg ? 'flex' : 'none';
+  document.getElementById('husbandFatherRow').style.display = isPreg ? 'flex' : 'none';
+  recalcTotal();
+}
+
+function onDoctorChange() {}
+function addNewDoctorPrompt() { document.getElementById('addDoctorOverlay').classList.add('show'); }
+function closeAddDoctor() { document.getElementById('addDoctorOverlay').classList.remove('show'); }
+async function saveNewDoctor() {
+  const name = document.getElementById('newDoctorName').value.trim();
+  if (!name) { showToast('Doctor name required'); return; }
+  const data = {
+    name: name,
+    qualifications: document.getElementById('newDoctorQual').value.trim(),
+    specialty: document.getElementById('newDoctorSpec').value,
+    hospital_clinic: document.getElementById('newDoctorHosp').value.trim(),
+    phone: document.getElementById('newDoctorPhone').value.trim()
+  };
+  try {
+    const r = await api('addDoctor', { data });
+    if (r.error) { showToast('Failed: ' + r.error, 'error'); return; }
+    state.doctors = await api('listDoctors', { active_only: true });
+    populateDoctorDropdown();
+    document.getElementById('referringDoctor').value = r.doctor_id;
+    showToast(r.existed ? 'Doctor already exists — selected' : 'Doctor added', 'success');
+    closeAddDoctor();
+    document.getElementById('newDoctorName').value = '';
+    document.getElementById('newDoctorQual').value = '';
+    document.getElementById('newDoctorHosp').value = '';
+    document.getElementById('newDoctorPhone').value = '';
+  } catch (e) { showToast('Save failed', 'error'); }
+}
+
+function onAdvanceToggle() {
+  const has = document.getElementById('hasAdvance').checked;
+  document.getElementById('advanceRow').style.display = has ? 'flex' : 'none';
+  document.getElementById('paidNowOnlyRow').style.display = has ? 'none' : 'flex';
+  recalcTotal();
+}
+
+function recalcTotal() {
+  const scan = Number(document.getElementById('scanPrice').value) || 0;
+  const add = Number(document.getElementById('additionalCharges').value) || 0;
+  const disc = Number(document.getElementById('discount').value) || 0;
+  const total = scan + add - disc;
+  const hasAdv = document.getElementById('hasAdvance').checked;
+  let netPaid;
+  if (hasAdv) {
+    const adv = Number(document.getElementById('advanceAmount').value) || 0;
+    const pay = Number(document.getElementById('amountPaid').value) || 0;
+    netPaid = adv + pay;
+  } else {
+    netPaid = Number(document.getElementById('amountPaidSimple').value) || 0;
+  }
+  const pending = total - netPaid;
+  document.getElementById('sumScan').textContent = '₹' + scan;
+  document.getElementById('sumAdd').textContent = '₹' + add;
+  document.getElementById('sumDisc').textContent = '−₹' + disc;
+  document.getElementById('sumTotal').textContent = '₹' + total;
+  document.getElementById('sumPaid').textContent = '₹' + netPaid;
+  document.getElementById('sumPending').textContent = '₹' + pending;
+  document.getElementById('sumPending').style.color = pending > 0 ? '#dc2626' : '#16a34a';
+}
+function recalcTotalSimple() { recalcTotal(); }
+
+async function generateBill() {
+  const phone = document.getElementById('phoneInput').value;
+  const name = document.getElementById('patientName').value.trim();
+  const age = document.getElementById('patientAge').value;
+  const sex = document.getElementById('patientSex').value;
+  const address = document.getElementById('patientAddress').value.trim();
+  const scanCode = document.getElementById('scanCode').value;
+  if (!name || !age || !sex || !scanCode) { showToast('Fill name, age, sex, scan'); return; }
+  if (!state.photoDataUrl && !state.photoSkipReason) {
+    showToast('Capture photo OR mark skip reason'); return;
+  }
+  const scanOpt = document.getElementById('scanCode').options[document.getElementById('scanCode').selectedIndex];
+  const isPreg = scanOpt.dataset.preg === 'true';
+  if (isPreg && !document.getElementById('husbandFather').value.trim()) {
+    showToast('Husband/Father name required for OBG'); return;
+  }
+  if (isPreg && !document.getElementById('lmpDate').value) {
+    showToast('LMP required for OBG'); return;
+  }
+
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Saving...';
+
+  try {
+    let patientId;
+    if (state.isNewPatient) {
+      const dob = age ? new Date(new Date().getFullYear() - age, 0, 1).toISOString().slice(0,10) : '';
+      const r = await api('addPatient', { data: {
+        phone_primary: phone, name, dob, sex, address,
+        husband_father_name: document.getElementById('husbandFather').value.trim()
+      }});
+      if (r.error) throw new Error(r.error);
+      patientId = r.patient_id;
+    } else {
+      patientId = state.patient.patient_id;
+    }
+
+    const billRef = 'B-' + Date.now().toString(36).toUpperCase();
+    const serial = 'DSN' + Math.floor(Math.random() * 100000);
+
+    const visitData = {
+      patient_id: patientId, bill_ref: billRef, token_number: '',
+      serial_number: serial, scan_code: scanCode,
+      lmp: document.getElementById('lmpDate').value || '',
+      referring_doctor_id: document.getElementById('referringDoctor').value,
+      additional_charges: Number(document.getElementById('additionalCharges').value) || 0,
+      discount_manual: Number(document.getElementById('discount').value) || 0,
+      has_advance_payment: document.getElementById('hasAdvance').checked,
+      advance_amount: Number(document.getElementById('advanceAmount').value) || 0,
+      amount_paid_at_billing: document.getElementById('hasAdvance').checked
+        ? (Number(document.getElementById('amountPaid').value) || 0)
+        : (Number(document.getElementById('amountPaidSimple').value) || 0),
+      payment_mode: document.getElementById('paymentMode').value
+    };
+    const visitResult = await api('addVisit', { data: visitData });
+    if (visitResult.error) throw new Error(visitResult.error);
+
+    let photoUrl = '';
+    if (state.photoDataUrl) {
+      const base64 = state.photoDataUrl.split(',')[1];
+      const today = new Date();
+      const yyyy = today.getFullYear(), mm = String(today.getMonth()+1).padStart(2,'0'), dd = String(today.getDate()).padStart(2,'0');
+      const folder = `photos/${yyyy}/${mm}/${dd}`;
+      const fname = `${visitResult.visit_id}_${patientId}.jpg`;
+      const up = await api('uploadFile', { folder, file_name: fname, base64, mime_type: 'image/jpeg' });
+      if (up.url) {
+        photoUrl = up.url;
+        await api('linkVisitToFile', { visit_id: visitResult.visit_id, file_type: 'photo', url: photoUrl });
+      }
+    }
+
+    const pdfBlob = await buildBillPdf({
+      visitId: visitResult.visit_id, patientId, billRef, serial,
+      name, age, sex, phone, address,
+      husbandFather: document.getElementById('husbandFather').value.trim(),
+      scanCode, scanType: scanOpt.dataset.scanType,
+      scanPrice: Number(document.getElementById('scanPrice').value),
+      additional: Number(document.getElementById('additionalCharges').value) || 0,
+      discount: Number(document.getElementById('discount').value) || 0,
+      total: visitResult.total_payable,
+      netPaid: visitResult.total_payable - visitResult.amount_pending,
+      pending: visitResult.amount_pending,
+      paymentMode: document.getElementById('paymentMode').value,
+      hasAdvance: document.getElementById('hasAdvance').checked,
+      advance: Number(document.getElementById('advanceAmount').value) || 0,
+      isPreg, lmp: document.getElementById('lmpDate').value || '',
+      referrerName: document.getElementById('referringDoctor').options[document.getElementById('referringDoctor').selectedIndex].textContent,
+      photoDataUrl: state.photoDataUrl
+    });
+
+    const today = new Date();
+    const yyyy = today.getFullYear(), mm = String(today.getMonth()+1).padStart(2,'0'), dd = String(today.getDate()).padStart(2,'0');
+    const folder = `bills/${yyyy}/${mm}/${dd}`;
+    const fname = `${billRef}_${name.replace(/[^a-zA-Z0-9]/g,'_').slice(0,30)}.pdf`;
+    const reader = new FileReader();
+    const base64 = await new Promise((res, rej) => {
+      reader.onload = () => res(reader.result.split(',')[1]);
+      reader.onerror = rej; reader.readAsDataURL(pdfBlob);
+    });
+    const up = await api('uploadFile', { folder, file_name: fname, base64, mime_type: 'application/pdf' });
+    if (up.url) {
+      await api('linkVisitToFile', { visit_id: visitResult.visit_id, file_type: 'bill_pdf', url: up.url });
+    }
+
+    state.lastBill = { visitId: visitResult.visit_id, billRef, pdfBlob, pdfUrl: up.url, name, phone };
+    document.getElementById('finalBillRef').textContent = billRef;
+    document.getElementById('finalVisitId').textContent = visitResult.visit_id;
+    document.getElementById('readySection').style.display = 'block';
+    document.getElementById('readySection').scrollIntoView({behavior:'smooth'});
+    showToast('Bill saved ✓', 'success');
+  } catch (e) {
+    showToast('Failed: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Generate Bill →';
+  }
+}
+
+async function buildBillPdf(d) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const W = 210, H = 297;
+  const s = state.settings;
+
+  doc.setFillColor(26, 58, 107);
+  doc.rect(0, 0, W, 22, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setTextColor(255,255,255); doc.setFontSize(13);
+  doc.text(s.clinic_name_en || 'Dr. L. G. Krishna Ultrasound Clinic', 12, 10);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
+  doc.text(s.clinic_address || '', 12, 15);
+  doc.text('Phone: ' + (s.clinic_phone || ''), 12, 19);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+  doc.text(s.doctor_name || 'Dr. Satish B', W - 12, 10, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+  doc.text(s.doctor_qualifications || 'MBBS DMRD', W - 12, 14, { align: 'right' });
+  doc.text('KMC Reg. ' + (s.doctor_kmc_reg || ''), W - 12, 18, { align: 'right' });
+
+  doc.setFillColor(232, 160, 32);
+  doc.rect(0, 22, W, 6, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setTextColor(255,255,255); doc.setFontSize(11);
+  doc.text('SCAN FEE BILL', W/2, 26.5, { align: 'center' });
+
+  doc.setTextColor(28,38,54);
+  let y = 36;
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+  doc.text('Bill Ref:', 12, y); doc.setFont('helvetica', 'normal');
+  doc.text(d.billRef, 30, y);
+  doc.setFont('helvetica', 'bold'); doc.text('Date:', W - 60, y);
+  doc.setFont('helvetica', 'normal'); doc.text(new Date().toLocaleString('en-IN'), W - 48, y);
+  y += 5;
+  doc.setFont('helvetica', 'bold'); doc.text('Serial:', 12, y);
+  doc.setFont('helvetica', 'normal'); doc.text(d.serial, 30, y);
+  y += 7;
+
+  doc.setDrawColor(180); doc.setLineWidth(0.3);
+  doc.rect(10, y, W - 20, 38);
+
+  if (d.photoDataUrl) {
+    try { doc.addImage(d.photoDataUrl, 'JPEG', W - 35, y + 3, 22, 28); }
+    catch(e) { console.error('photo add failed', e); }
+  } else {
+    doc.setFillColor(245); doc.rect(W - 35, y + 3, 22, 28, 'F');
+    doc.setFontSize(7); doc.setTextColor(150); doc.text('no photo', W - 24, y + 17, { align: 'center' });
+    doc.setTextColor(28,38,54);
+  }
+
+  doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+  doc.text('Patient:', 13, y + 6); doc.setFont('helvetica', 'normal');
+  doc.text(d.name, 30, y + 6);
+  doc.setFont('helvetica', 'bold'); doc.text('Age/Sex:', 100, y + 6); doc.setFont('helvetica', 'normal');
+  doc.text(d.age + ' / ' + (d.sex === 'F' ? 'Female' : d.sex === 'M' ? 'Male' : d.sex), 120, y + 6);
+
+  doc.setFont('helvetica', 'bold'); doc.text('Phone:', 13, y + 12); doc.setFont('helvetica', 'normal');
+  doc.text(d.phone, 30, y + 12);
+  if (d.husbandFather) {
+    doc.setFont('helvetica', 'bold'); doc.text('H/F:', 100, y + 12); doc.setFont('helvetica', 'normal');
+    doc.text(d.husbandFather.slice(0, 30), 110, y + 12);
+  }
+
+  doc.setFont('helvetica', 'bold'); doc.text('Address:', 13, y + 18); doc.setFont('helvetica', 'normal');
+  doc.text((d.address || '').slice(0, 70), 30, y + 18);
+
+  doc.setFont('helvetica', 'bold'); doc.text('Scan:', 13, y + 24); doc.setFont('helvetica', 'normal');
+  doc.text(d.scanType + ' [' + d.scanCode + ']', 27, y + 24);
+
+  doc.setFont('helvetica', 'bold'); doc.text('Ref Dr:', 13, y + 30); doc.setFont('helvetica', 'normal');
+  doc.text((d.referrerName || '').slice(0, 60), 30, y + 30);
+
+  if (d.isPreg && d.lmp) {
+    doc.setFont('helvetica', 'bold'); doc.text('LMP:', 100, y + 24); doc.setFont('helvetica', 'normal');
+    doc.text(d.lmp, 110, y + 24);
+  }
+
+  y += 44;
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+  doc.text('CHARGES', 12, y); y += 4;
+  doc.setLineWidth(0.5); doc.line(12, y, W - 12, y); y += 5;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+
+  const chargeRows = [
+    ['Scan Fee', d.scanPrice],
+    ['Additional Charges', d.additional],
+    ['Discount', -d.discount]
+  ];
+  chargeRows.forEach(([lbl, amt]) => {
+    doc.text(lbl, 14, y); doc.text('Rs. ' + amt.toFixed(0), W - 14, y, { align: 'right' });
+    y += 5;
+  });
+
+  doc.setLineWidth(0.4); doc.line(12, y, W - 12, y); y += 5;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  doc.text('TOTAL PAYABLE', 14, y);
+  doc.text('Rs. ' + d.total.toFixed(0), W - 14, y, { align: 'right' });
+  y += 7;
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+  if (d.hasAdvance) {
+    doc.text('Advance paid:', 14, y); doc.text('Rs. ' + d.advance.toFixed(0), W - 14, y, { align: 'right' });
+    y += 5;
+  }
+  doc.text('Net paid (' + d.paymentMode + '):', 14, y);
+  doc.text('Rs. ' + d.netPaid.toFixed(0), W - 14, y, { align: 'right' });
+  y += 5;
+  if (d.pending > 0) {
+    doc.setTextColor(220, 38, 38); doc.setFont('helvetica', 'bold');
+    doc.text('Pending:', 14, y); doc.text('Rs. ' + d.pending.toFixed(0), W - 14, y, { align: 'right' });
+    doc.setTextColor(28,38,54); doc.setFont('helvetica', 'normal');
+    y += 5;
+  }
+  y += 8;
+
+  const dataLine = `##DATA##${d.name}|${d.age}|${d.sex}|${d.phone}|${(d.address||'').replace(/\|/g,',')}|${d.referrerName}|${d.isPreg?'Yes':'No'}|${d.lmp||''}||${d.scanCode}|${d.scanType}|${d.scanPrice}|${d.hasAdvance?d.advance:0}|${d.netPaid}|${d.additional}|${d.discount}|${d.total}|${d.netPaid}|${d.pending}|${d.serial}|${new Date().toLocaleString('en-IN')}|${d.paymentMode}|${d.billRef}##END##`;
+  doc.setTextColor(255, 255, 255); doc.setFontSize(0.5);
+  doc.text(dataLine, 10, y);
+  doc.setTextColor(28,38,54);
+
+  // Booking QR — points to lgk-booking with patient pre-fill
+  const bookingUrl = `${BOOKING_URL}?phone=${d.phone}&name=${encodeURIComponent(d.name)}&scan=${encodeURIComponent(d.scanType)}&age=${d.age}&sex=${d.sex==='F'?'Female':d.sex==='M'?'Male':''}`;
+  const bookingQrCanvas = await makeQrCanvas(bookingUrl);
+  const billQrCanvas = await makeQrCanvas(`https://drlgkscan.github.io/drlgk-clinic/bill?ref=${d.billRef}`);
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(26, 58, 107);
+  doc.text('Book Next Scan', 14, y + 5);
+  doc.addImage(bookingQrCanvas.toDataURL(), 'PNG', 14, y + 8, 22, 22);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(80);
+  doc.text('Scan or call', 38, y + 14);
+  doc.setFont('helvetica', 'bold'); doc.text(s.clinic_phone || '7204764969', 38, y + 18);
+  doc.setFont('helvetica', 'normal'); doc.text('to book appointment', 38, y + 22);
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(26, 58, 107);
+  doc.text('View Bill Online', W - 38, y + 5);
+  doc.addImage(billQrCanvas.toDataURL(), 'PNG', W - 36, y + 8, 22, 22);
+
+  doc.setTextColor(80); doc.setFontSize(7.5); doc.setFont('helvetica', 'italic');
+  if (d.isPreg) {
+    doc.text('Sex of foetus has neither been determined nor disclosed. This examination is carried out under the PCPNDT Act.', W/2, H - 22, { align: 'center', maxWidth: W - 24 });
+  }
+
+  doc.setFillColor(26, 58, 107);
+  doc.rect(0, H - 14, W, 14, 'F');
+  doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  doc.text(s.clinic_phone + ' · ' + (s.clinic_email||''), 12, H - 8);
+  doc.text(s.clinic_address || '', W/2, H - 8, { align: 'center' });
+  doc.text('Thank you', W - 12, H - 8, { align: 'right' });
+
+  return doc.output('blob');
+}
+
+function makeQrCanvas(text) {
+  return new Promise((resolve) => {
+    const tmp = document.createElement('div'); tmp.style.position = 'fixed'; tmp.style.left = '-9999px'; document.body.appendChild(tmp);
+    new QRCode(tmp, { text, width: 100, height: 100, correctLevel: QRCode.CorrectLevel.M });
+    setTimeout(() => {
+      const c = tmp.querySelector('canvas') || tmp.querySelector('img');
+      if (c.tagName === 'IMG') {
+        const canvas = document.createElement('canvas'); canvas.width = 100; canvas.height = 100;
+        canvas.getContext('2d').drawImage(c, 0, 0); document.body.removeChild(tmp); resolve(canvas);
+      } else {
+        document.body.removeChild(tmp); resolve(c);
+      }
+    }, 80);
+  });
+}
+
+function downloadBillPdf() {
+  if (!state.lastBill) return;
+  const url = URL.createObjectURL(state.lastBill.pdfBlob);
+  const a = document.createElement('a');
+  a.href = url; a.download = state.lastBill.billRef + '.pdf'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function shareWhatsApp() {
+  if (!state.lastBill) return;
+  const phone = state.lastBill.phone.replace(/\D/g, '');
+  const msg = encodeURIComponent(`*${state.settings.clinic_name_en}*\n\nDear ${state.lastBill.name}, your bill is ready.\nRef: ${state.lastBill.billRef}\n\n${state.lastBill.pdfUrl}\n\nThank you.`);
+  window.open(`https://wa.me/91${phone}?text=${msg}`, '_blank');
+}
+function printBill() {
+  if (!state.lastBill) return;
+  const url = URL.createObjectURL(state.lastBill.pdfBlob);
+  const w = window.open(url);
+  setTimeout(() => { try { w.print(); } catch(e){} }, 500);
+}
+function resetForNewPatient() {
+  state.patient = null; state.isNewPatient = true; state.photoDataUrl = null; state.photoSkipReason = null; state.lastBill = null;
+  document.getElementById('phoneInput').value = '';
+  document.getElementById('lookupResult').innerHTML = '';
+  document.getElementById('photoSection').style.display = 'none';
+  document.getElementById('billSection').style.display = 'none';
+  document.getElementById('readySection').style.display = 'none';
+  document.getElementById('photoArea').innerHTML = '<div class="icon">📷</div><div class="text">Tap to capture patient photo</div>';
+  document.getElementById('photoArea').className = 'photo-capture-area';
+  document.getElementById('photoArea').style.borderColor = ''; document.getElementById('photoArea').style.background = '';
+  ['patientName','patientAge','patientAddress','husbandFather','lmpDate']
+    .forEach(id => document.getElementById(id).value = '');
+  ['additionalCharges','discount','advanceAmount','amountPaid','amountPaidSimple']
+    .forEach(id => document.getElementById(id).value = '0');
+  document.getElementById('patientSex').value = '';
+  document.getElementById('scanCode').value = '';
+  document.getElementById('hasAdvance').checked = false; onAdvanceToggle();
+  document.getElementById('phoneInput').focus();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+init();
+</script>
+</body>
+</html>

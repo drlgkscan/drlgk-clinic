@@ -312,7 +312,8 @@ button.full { width:100%; }
   </div>
   <div style="display:flex; flex-direction:column; gap:8px;">
     <button class="primary full" onclick="downloadBillPdf()">📥 Download Bill PDF</button>
-    <button class="warn full" onclick="shareWhatsApp()">📱 Send to Patient via WhatsApp</button>
+    <button class="warn full" onclick="shareWhatsAppToPatient()">📱 Send to Patient (<span id="patientPhoneLabel">—</span>)</button>
+    <button class="ghost full" onclick="shareWhatsAppToClinic()" style="border-color:#16a34a; color:#16a34a;">📤 Send to Clinic (7204764969)</button>
     <button class="ghost full" onclick="printBill()">🖨 Print Bill (A4)</button>
     <button class="ghost full" onclick="resetForNewPatient()" style="margin-top:8px;">+ Next Patient</button>
   </div>
@@ -726,6 +727,7 @@ async function generateBill() {
     state.lastBill = { visitId: visitResult.visit_id, billRef, pdfBlob, pdfUrl: up.url, name, phone };
     document.getElementById('finalBillRef').textContent = billRef;
     document.getElementById('finalVisitId').textContent = visitResult.visit_id;
+    document.getElementById('patientPhoneLabel').textContent = phone;
     document.getElementById('readySection').style.display = 'block';
     document.getElementById('readySection').scrollIntoView({behavior:'smooth'});
     showToast('Bill saved ✓', 'success');
@@ -743,26 +745,38 @@ async function buildBillPdf(d) {
   const W = 210, H = 297;
   const s = state.settings;
 
-  doc.setFillColor(26, 58, 107);
-  doc.rect(0, 0, W, 22, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setTextColor(255,255,255); doc.setFontSize(13);
-  doc.text(s.clinic_name_en || 'Dr. L. G. Krishna Ultrasound Clinic', 12, 10);
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
-  doc.text(s.clinic_address || '', 12, 15);
-  doc.text('Phone: ' + (s.clinic_phone || ''), 12, 19);
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-  doc.text(s.doctor_name || 'Dr. Satish B', W - 12, 10, { align: 'right' });
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-  doc.text(s.doctor_qualifications || 'MBBS DMRD', W - 12, 14, { align: 'right' });
-  doc.text('KMC Reg. ' + (s.doctor_kmc_reg || ''), W - 12, 18, { align: 'right' });
+  // ─── INK-LIGHT HEADER — two thin rules + colored text only ───
+  // Top accent rule
+  doc.setDrawColor(26, 58, 107); doc.setLineWidth(0.6);
+  doc.line(12, 12, W - 12, 12);
 
-  doc.setFillColor(232, 160, 32);
-  doc.rect(0, 22, W, 6, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setTextColor(255,255,255); doc.setFontSize(11);
-  doc.text('SCAN FEE BILL', W/2, 26.5, { align: 'center' });
+  // Clinic name + address (left) — colored text, no fill
+  doc.setFont('helvetica', 'bold'); doc.setTextColor(26, 58, 107); doc.setFontSize(15);
+  doc.text(s.clinic_name_en || 'Dr. L. G. Krishna Ultrasound Clinic', 12, 20);
+  doc.setFont('helvetica', 'normal'); doc.setTextColor(95, 94, 90); doc.setFontSize(8.5);
+  doc.text(s.clinic_address || '', 12, 26);
+  doc.text('Phone: ' + String(s.clinic_phone || ''), 12, 30);
+
+  // Doctor block (right) — minimal, colored text
+  doc.setFont('helvetica', 'bold'); doc.setTextColor(28, 38, 54); doc.setFontSize(11);
+  doc.text(s.doctor_name || 'Dr. Satish B', W - 12, 20, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setTextColor(95, 94, 90); doc.setFontSize(8.5);
+  doc.text(s.doctor_qualifications || 'MBBS DMRD', W - 12, 26, { align: 'right' });
+  doc.text('KMC Reg. ' + String(s.doctor_kmc_reg || ''), W - 12, 30, { align: 'right' });
+
+  // Lower header rule
+  doc.setDrawColor(26, 58, 107); doc.setLineWidth(0.4);
+  doc.line(12, 35, W - 12, 35);
+
+  // ─── BILL TITLE — small, centered, no fill block ───
+  doc.setFont('helvetica', 'bold'); doc.setTextColor(232, 160, 32); doc.setFontSize(12);
+  doc.text('SCAN FEE BILL', W/2, 43, { align: 'center' });
+  // Tiny saffron underline accent — visual lift, near zero ink
+  doc.setDrawColor(232, 160, 32); doc.setLineWidth(0.8);
+  doc.line(W/2 - 18, 45, W/2 + 18, 45);
 
   doc.setTextColor(28,38,54);
-  let y = 36;
+  let y = 54;
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
   doc.text('Bill Ref:', 12, y); doc.setFont('helvetica', 'normal');
@@ -830,11 +844,18 @@ async function buildBillPdf(d) {
     y += 5;
   });
 
-  doc.setLineWidth(0.4); doc.line(12, y, W - 12, y); y += 5;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+  doc.setLineWidth(0.4); doc.setDrawColor(26, 58, 107); doc.line(12, y, W - 12, y); y += 6;
+
+  // TOTAL PAYABLE — elegant: colored label + subtle saffron tint behind amount
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.setTextColor(26, 58, 107);
   doc.text('TOTAL PAYABLE', 14, y);
+  // Subtle saffron tint behind the amount — barely-there ink, makes amount pop
+  doc.setFillColor(255, 247, 230);
+  doc.rect(W - 50, y - 5, 38, 7, 'F');
+  doc.setTextColor(26, 58, 107);
   doc.text('Rs. ' + d.total.toFixed(0), W - 14, y, { align: 'right' });
-  y += 7;
+  doc.setTextColor(28, 38, 54);
+  y += 8;
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
   if (d.hasAdvance) {
@@ -879,11 +900,13 @@ async function buildBillPdf(d) {
     doc.text('Sex of foetus has neither been determined nor disclosed. This examination is carried out under the PCPNDT Act.', W/2, H - 22, { align: 'center', maxWidth: W - 24 });
   }
 
-  doc.setFillColor(26, 58, 107);
-  doc.rect(0, H - 14, W, 14, 'F');
-  doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+  // ─── INK-LIGHT FOOTER — single thin rule + small muted text ───
+  doc.setDrawColor(26, 58, 107); doc.setLineWidth(0.4);
+  doc.line(12, H - 14, W - 12, H - 14);
+  doc.setTextColor(95, 94, 90); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
   doc.text(String(s.clinic_phone || '') + ' · ' + (s.clinic_email||''), 12, H - 8);
   doc.text(s.clinic_address || '', W/2, H - 8, { align: 'center' });
+  doc.setFont('helvetica', 'italic'); doc.setTextColor(26, 58, 107);
   doc.text('Thank you', W - 12, H - 8, { align: 'right' });
 
   return doc.output('blob');
@@ -912,11 +935,33 @@ function downloadBillPdf() {
   a.href = url; a.download = state.lastBill.billRef + '.pdf'; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function shareWhatsApp() {
+function shareWhatsAppToPatient() {
   if (!state.lastBill) return;
   const phone = state.lastBill.phone.replace(/\D/g, '');
-  const msg = encodeURIComponent(`*${state.settings.clinic_name_en}*\n\nDear ${state.lastBill.name}, your bill is ready.\nRef: ${state.lastBill.billRef}\n\n${state.lastBill.pdfUrl}\n\nThank you.`);
+  if (phone.length !== 10) { showToast('Patient phone invalid', 'error'); return; }
+  const msg = encodeURIComponent(
+    `*${state.settings.clinic_name_en}*\n\n` +
+    `Dear ${state.lastBill.name},\n\n` +
+    `Your bill is ready.\n` +
+    `Bill Ref: ${state.lastBill.billRef}\n\n` +
+    `View / download:\n${state.lastBill.pdfUrl}\n\n` +
+    `Thank you.`
+  );
   window.open(`https://wa.me/91${phone}?text=${msg}`, '_blank');
+}
+
+function shareWhatsAppToClinic() {
+  if (!state.lastBill) return;
+  const clinicNumber = String(state.settings.clinic_whatsapp || state.settings.clinic_phone || '7204764969').replace(/\D/g, '');
+  const msg = encodeURIComponent(
+    `*Bill Archive*\n\n` +
+    `Patient: ${state.lastBill.name}\n` +
+    `Phone: ${state.lastBill.phone}\n` +
+    `Bill Ref: ${state.lastBill.billRef}\n` +
+    `Visit ID: ${state.lastBill.visitId}\n\n` +
+    `${state.lastBill.pdfUrl}`
+  );
+  window.open(`https://wa.me/91${clinicNumber}?text=${msg}`, '_blank');
 }
 function printBill() {
   if (!state.lastBill) return;

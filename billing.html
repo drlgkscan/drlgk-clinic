@@ -771,7 +771,7 @@ async function buildBillPdf(d) {
   doc.setFont('helvetica', 'normal'); doc.text(new Date().toLocaleString('en-IN'), W - 48, y);
   y += 5;
   doc.setFont('helvetica', 'bold'); doc.text('Serial:', 12, y);
-  doc.setFont('helvetica', 'normal'); doc.text(d.serial, 30, y);
+  doc.setFont('helvetica', 'normal'); doc.text(String(d.serial), 30, y);
   y += 7;
 
   doc.setDrawColor(180); doc.setLineWidth(0.3);
@@ -790,10 +790,10 @@ async function buildBillPdf(d) {
   doc.text('Patient:', 13, y + 6); doc.setFont('helvetica', 'normal');
   doc.text(d.name, 30, y + 6);
   doc.setFont('helvetica', 'bold'); doc.text('Age/Sex:', 100, y + 6); doc.setFont('helvetica', 'normal');
-  doc.text(d.age + ' / ' + (d.sex === 'F' ? 'Female' : d.sex === 'M' ? 'Male' : d.sex), 120, y + 6);
+  doc.text(String(d.age) + ' / ' + (d.sex === 'F' ? 'Female' : d.sex === 'M' ? 'Male' : d.sex), 120, y + 6);
 
   doc.setFont('helvetica', 'bold'); doc.text('Phone:', 13, y + 12); doc.setFont('helvetica', 'normal');
-  doc.text(d.phone, 30, y + 12);
+  doc.text(String(d.phone), 30, y + 12);
   if (d.husbandFather) {
     doc.setFont('helvetica', 'bold'); doc.text('H/F:', 100, y + 12); doc.setFont('helvetica', 'normal');
     doc.text(d.husbandFather.slice(0, 30), 110, y + 12);
@@ -810,7 +810,7 @@ async function buildBillPdf(d) {
 
   if (d.isPreg && d.lmp) {
     doc.setFont('helvetica', 'bold'); doc.text('LMP:', 100, y + 24); doc.setFont('helvetica', 'normal');
-    doc.text(d.lmp, 110, y + 24);
+    doc.text(String(d.lmp), 110, y + 24);
   }
 
   y += 44;
@@ -867,7 +867,7 @@ async function buildBillPdf(d) {
   doc.addImage(bookingQrCanvas.toDataURL(), 'PNG', 14, y + 8, 22, 22);
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(80);
   doc.text('Scan or call', 38, y + 14);
-  doc.setFont('helvetica', 'bold'); doc.text(s.clinic_phone || '7204764969', 38, y + 18);
+  doc.setFont('helvetica', 'bold'); doc.text(String(s.clinic_phone || '7204764969'), 38, y + 18);
   doc.setFont('helvetica', 'normal'); doc.text('to book appointment', 38, y + 22);
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(26, 58, 107);
@@ -882,7 +882,7 @@ async function buildBillPdf(d) {
   doc.setFillColor(26, 58, 107);
   doc.rect(0, H - 14, W, 14, 'F');
   doc.setTextColor(255,255,255); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
-  doc.text(s.clinic_phone + ' · ' + (s.clinic_email||''), 12, H - 8);
+  doc.text(String(s.clinic_phone || '') + ' · ' + (s.clinic_email||''), 12, H - 8);
   doc.text(s.clinic_address || '', W/2, H - 8, { align: 'center' });
   doc.text('Thank you', W - 12, H - 8, { align: 'right' });
 

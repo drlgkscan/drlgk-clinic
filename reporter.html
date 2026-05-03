@@ -773,10 +773,15 @@ async function generateWordReport(fields) {
     `Date: ${scanDateClean}`
   ].join('\n');
 
-  const [bookingQr, billQr] = await Promise.all([
-    renderQR(bookingUrl, 'qr1Canvas', '#000000'),
-    renderQR(billText, 'qr2Canvas', '#'+pal.main)
-  ]);
+  // Single booking QR with patient phone prefill — encourages advance booking
+  let bookingPrefillUrl = bookingUrl;
+  const phoneClean = (fields.phone || '').replace(/\D/g, '');
+  const params = new URLSearchParams();
+  if (phoneClean.length === 10) params.append('phone', phoneClean);
+  if (fields.patientName && fields.patientName !== 'N/A') params.append('name', fields.patientName);
+  const paramStr = params.toString();
+  if (paramStr) bookingPrefillUrl = bookingUrl + '?' + paramStr;
+  const bookingQr = await renderQR(bookingPrefillUrl, 'qr1Canvas', '#000000');
 
   // ─── BORDER CONSTANTS ───
   const NB={style:BorderStyle.NONE,size:0,color:'FFFFFF'};
@@ -987,43 +992,93 @@ async function generateWordReport(fields) {
   while(threadText.length<TARGET) threadText+=repeat;
   threadText=threadText.substring(0,TARGET);
 
-  // ─── HEADER TABLE ───
+  // ─── PATIENT PHOTO FETCH (for header right column) ───
+  // Fetch via backend (Drive direct fetch is CORS-blocked even for "anyone with link" files)
+  let patientPhotoData = null;
+  let patientPhotoType = 'png';
+  if (fields._patient_photo_url) {
+    try {
+      const r = await apiCall('getFileBase64', { url: fields._patient_photo_url });
+      if (r && r.base64) {
+        const binStr = atob(r.base64);
+        const buf = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) buf[i] = binStr.charCodeAt(i);
+        patientPhotoData = buf;
+        const m = (r.mime_type || '').toLowerCase();
+        if (m.includes('jpeg') || m.includes('jpg')) patientPhotoType = 'jpg';
+        else if (m.includes('png')) patientPhotoType = 'png';
+        else if (m.includes('gif')) patientPhotoType = 'gif';
+        else if (m.includes('bmp')) patientPhotoType = 'bmp';
+      }
+    } catch (e) { console.warn('Photo fetch failed:', e); }
+  }
+
+  // ─── INITIALS FALLBACK (when no photo) — render to canvas, encode as PNG ───
+  function buildInitials(name) {
+    const cleaned = (name || 'Patient').trim();
+    const parts = cleaned.split(/\s+/).filter(p => p);
+    if (parts.length === 0) return '??';
+    if (parts.length === 1) return parts[0].substring(0,2).toUpperCase();
+    return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+  }
+  function makeInitialsCircle(initials, bgColor) {
+    const size = 280;  // canvas px (rendered as ~24mm in docx)
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    // Circle
+    ctx.fillStyle = '#'+bgColor;
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+    ctx.fill();
+    // Initials
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 130px Calibri, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(initials, size/2, size/2 + 5);
+    return canvas;
+  }
+  if (!patientPhotoData) {
+    try {
+      const initials = buildInitials(fields.patientName);
+      const canvas = makeInitialsCircle(initials, pal.main);
+      const dataUrl = canvas.toDataURL('image/png');
+      const b64 = dataUrl.split(',')[1];
+      const binStr = atob(b64);
+      const buf = new Uint8Array(binStr.length);
+      for (let i = 0; i < binStr.length; i++) buf[i] = binStr.charCodeAt(i);
+      patientPhotoData = buf;
+      patientPhotoType = 'png';
+    } catch (e) { console.warn('Initials canvas failed:', e); }
+  }
+
+  // ─── HEADER TABLE — bigger clinic name on left, patient photo on right ───
   const headerTable=new Table({
     width:{size:100,type:WidthType.PERCENTAGE},
     borders:{top:NB,bottom:{style:BorderStyle.THICK,size:12,color:'111111'},left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
     rows:[new TableRow({children:[
-      // Left: clinic name + thread strip
-      new TableCell({borders:NO_BDR,width:{size:72,type:WidthType.PERCENTAGE},margins:{top:40,bottom:0,left:0,right:0},children:[
-        new Paragraph({spacing:{before:0,after:0,line:240},children:[
-          new TextRun({text:'ಡಾ. ಎಲ್ ಜಿ ಕೃಷ್ಣ ಆಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ',font:'Tunga',size:28,color:pal.main}),
-          new TextRun({text:'ಸಿರ್ಸಿ',font:'Tunga',size:28,color:pal.accent})
+      // Left cell: clinic name (now 30pt) + Kannada (14pt) + security thread
+      new TableCell({borders:NO_BDR,width:{size:78,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:30,bottom:30,left:0,right:20},children:[
+        new Paragraph({spacing:{before:0,after:0,line:260},children:[
+          new TextRun({text:'ಡಾ. ಎಲ್ ಜಿ ಕೃಷ್ಣ ಆಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ',font:'Tunga',size:28,italics:true,color:pal.main}),
+          new TextRun({text:'ಸಿರ್ಸಿ',font:'Tunga',size:28,italics:true,color:pal.accent})
         ]}),
-        new Paragraph({spacing:{before:0,after:0,line:240},children:[
-          new TextRun({text:'Dr L G Krishna Ultrasound Clinic, ',font:'Colonna MT',size:48,bold:true,color:'111111'}),
-          new TextRun({text:'Sirsi',font:'Colonna MT',size:48,bold:true,color:pal.accent})
+        new Paragraph({spacing:{before:30,after:0,line:280},children:[
+          new TextRun({text:'Dr L G Krishna Ultrasound Clinic, ',font:'Colonna MT',size:60,bold:true,color:'111111'}),
+          new TextRun({text:'Sirsi',font:'Colonna MT',size:60,bold:true,color:pal.accent})
         ]}),
         new Paragraph({
-          spacing:{before:20,after:0,line:220},
+          spacing:{before:30,after:0,line:220},
           border:{top:{style:BorderStyle.SINGLE,size:3,color:pal.main},bottom:{style:BorderStyle.SINGLE,size:3,color:pal.main}},
           children:[new TextRun({text:threadText,size:12,font:'Courier New',color:pal.main})]
         })
       ]}),
-      // Right: nested 2-col table — each QR + label in its own column
-      new TableCell({borders:NO_BDR,width:{size:28,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.TOP,margins:{top:20,bottom:0,left:10,right:0},children:[
-        new Table({
-          width:{size:100,type:WidthType.PERCENTAGE},
-          borders:{top:NB,bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
-          rows:[new TableRow({children:[
-            new TableCell({borders:NO_BDR,width:{size:50,type:WidthType.PERCENTAGE},margins:{top:0,bottom:0,left:0,right:2},children:[
-              new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:4},children:[new ImageRun({data:bookingQr,transformation:{width:64,height:64},type:'png'})]}),
-              new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Book Appt',font:'Calibri',size:13,color:'777777',italics:true})]})
-            ]}),
-            new TableCell({borders:NO_BDR,width:{size:50,type:WidthType.PERCENTAGE},margins:{top:0,bottom:0,left:2,right:0},children:[
-              new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:4},children:[new ImageRun({data:billQr,transformation:{width:64,height:64},type:'png'})]}),
-              new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Bill Details',font:'Calibri',size:13,color:'777777',italics:true})]})
-            ]})
-          ]})]
-        })
+      // Right cell: patient photo (or initials fallback)
+      new TableCell({borders:NO_BDR,width:{size:22,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:20,bottom:20,left:0,right:0},children:[
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children: patientPhotoData ? [
+          new ImageRun({data:patientPhotoData,transformation:{width:78,height:98},type:patientPhotoType})
+        ] : [new TextRun({text:'',size:8})]})
       ]})
     ]})]
   });
@@ -1070,96 +1125,175 @@ async function generateWordReport(fields) {
     });
   };
 
+  // ─── COMPACT DEMOGRAPHICS — 3 rows, dense, no photo (photo is in header) ───
+  // Helper for compact label-value cell
+  const dcL = (txt) => new TableCell({
+    borders:ALL_LB, margins:CM_T,
+    width:{size:0,type:WidthType.AUTO},
+    shading:{fill:'F4F4F4',type:ShadingType.CLEAR},
+    children:[new Paragraph({spacing:{before:0,after:0,line:240},children:[new TextRun({text:txt,bold:false,size:18,font:'Calibri',color:'555555'})]})]
+  });
+  const dcV = (txt, widthPct, isLight) => new TableCell({
+    borders:ALL_LB, margins:CM_T,
+    width:{size:widthPct||0,type:widthPct?WidthType.PERCENTAGE:WidthType.AUTO},
+    children:[new Paragraph({spacing:{before:0,after:0,line:240},children:[new TextRun({text:txt||'—',bold:true,size:isLight?18:20,font:'Calibri',color:isLight?'555555':'1A237E'})]})]
+  });
+  const dcVwide = (txt, span) => new TableCell({
+    borders:ALL_LB, margins:CM_T,
+    columnSpan: span || 5,
+    children:[new Paragraph({spacing:{before:0,after:0,line:240},children:[new TextRun({text:txt||'—',bold:true,size:18,font:'Calibri',color:'555555'})]})]
+  });
+
+  const phoneVal = (fields.phone && fields.phone !== 'N/A') ? fields.phone : '—';
+  const addrVal = (fields.address && fields.address !== 'N/A') ? fields.address : '—';
+  const billRefDisplay = makeRefCode(fields.serial, fields.token);
+
   const demoTable=new Table({
     width:{size:100,type:WidthType.PERCENTAGE},
-    borders:{top:TB,bottom:TB,left:TB,right:TB,insideHorizontal:TB,insideVertical:TB},
+    borders:{top:LB,bottom:LB,left:LB,right:LB,insideHorizontal:LB,insideVertical:LB},
     rows:[
-      new TableRow({children:[dCellWide('Patient Name: ',fields.patientName,'Age: ',fields.age+' / Sex: '+fields.sex)]}),
-      new TableRow({children:[dCell('Scan Type: ',fields.scanType+(fields.scanCode?' ['+fields.scanCode+']':''),true),dCell('Scan Date: ',scanDateClean,true)]}),
-      new TableRow({children:[dCell('Referral Doctor: ',fields.referralDoctor),dCell('Ref: ',makeRefCode(fields.serial,fields.token))]})
+      // Row 1: Name | Age/Sex | Date
+      new TableRow({children:[
+        dcL('Name'),
+        dcV(fields.patientName, 30),
+        dcL('Age/Sex'),
+        dcV((fields.age||'') + ' / ' + (fields.sex==='F'?'Female':fields.sex==='M'?'Male':fields.sex||''), 14),
+        dcL('Date'),
+        dcV(scanDateClean, 18)
+      ]}),
+      // Row 2: Phone | Address (wide)
+      new TableRow({children:[
+        dcL('Phone'),
+        dcV(phoneVal, 30),
+        dcL('Address'),
+        dcVwide(addrVal, 3)
+      ]}),
+      // Row 3: Ref Dr | Bill (wide)
+      new TableRow({children:[
+        dcL('Ref Dr'),
+        dcV(fields.referralDoctor, 30),
+        dcL('Bill'),
+        dcVwide(billRefDisplay, 3)
+      ]})
     ]
   });
 
-  // ─── PATIENT PHOTO (if available) ───
-  // Fetch via backend (Drive direct-fetch is CORS-blocked even for "anyone with link" files)
-  let patientPhotoData = null;
-  let patientPhotoType = 'png';
-  if (fields._patient_photo_url) {
-    try {
-      const r = await apiCall('getFileBase64', { url: fields._patient_photo_url });
-      if (r && r.base64) {
-        // Decode base64 → Uint8Array
-        const binStr = atob(r.base64);
-        const buf = new Uint8Array(binStr.length);
-        for (let i = 0; i < binStr.length; i++) buf[i] = binStr.charCodeAt(i);
-        patientPhotoData = buf;
-        // ImageRun type accepts: 'jpg', 'png', 'gif', 'bmp'
-        const m = (r.mime_type || '').toLowerCase();
-        if (m.includes('jpeg') || m.includes('jpg')) patientPhotoType = 'jpg';
-        else if (m.includes('png')) patientPhotoType = 'png';
-        else if (m.includes('gif')) patientPhotoType = 'gif';
-        else if (m.includes('bmp')) patientPhotoType = 'bmp';
-      } else if (r && r.error) {
-        console.warn('Photo fetch returned error:', r.error);
-      }
-    } catch (e) { console.warn('Photo fetch failed:', e); }
-  }
-
-  // Wrap demoTable + photo into a 2-column row
-  let demoBlock;
-  if (patientPhotoData) {
-    demoBlock = new Table({
-      width:{size:100,type:WidthType.PERCENTAGE},
-      borders:{top:NB,bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
-      rows:[new TableRow({children:[
-        new TableCell({borders:NO_BDR,width:{size:78,type:WidthType.PERCENTAGE},margins:{top:0,bottom:0,left:0,right:60},children:[demoTable]}),
-        new TableCell({borders:NO_BDR,width:{size:22,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.TOP,margins:{top:0,bottom:0,left:0,right:0},children:[
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[
-            new ImageRun({data:patientPhotoData,transformation:{width:90,height:115},type:patientPhotoType})
-          ]})
-        ]})
-      ]})]
-    });
-  } else {
-    demoBlock = demoTable;
-  }
-
-  // No watermark in Word document
-
-  // Scan title — tight spacing since thread fills the gap
-  const scanTitle=new Paragraph({
-    alignment:AlignmentType.CENTER,
-    spacing:{before:80,after:60},
-    children:[new TextRun({text:(fields.scanType||'ULTRASOUND STUDY').toUpperCase(),font:'Calibri',size:26,bold:true})]
+  // ─── COMBINED SCAN-FINDINGS TITLE (saffron tint, replaces standalone scanTitle) ───
+  const scanTitle = new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 100, after: 40 },
+    border: {
+      top: { style: BorderStyle.SINGLE, size: 4, color: pal.main },
+      bottom: { style: BorderStyle.SINGLE, size: 4, color: pal.main }
+    },
+    shading: { fill: 'FFF7E0', type: ShadingType.CLEAR },
+    children: [new TextRun({
+      text: (fields.scanType || 'ULTRASOUND STUDY').toUpperCase() + ' — FINDINGS',
+      font: 'Calibri', size: 26, bold: true, color: '8A6500'
+    })]
   });
 
   // ─── FOOTER ───
   const footerTable=new Table({
     width:{size:100,type:WidthType.PERCENTAGE},
-    borders:{top:{style:BorderStyle.SINGLE,size:4,color:pal.main},bottom:{style:BorderStyle.SINGLE,size:4,color:pal.main},left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
+    borders:{top:{style:BorderStyle.SINGLE,size:4,color:pal.main},bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
     rows:[
       new TableRow({children:[
-        new TableCell({borders:NO_BDR,width:{size:38,type:WidthType.PERCENTAGE},margins:CM,children:[
-          new Paragraph({spacing:{before:0,after:0},children:[new TextRun({text:'📞 7204764969  |  drlgkscan@gmail.com',bold:true,size:18,font:'Calibri',color:pal.main})]})
+        new TableCell({borders:NO_BDR,width:{size:36,type:WidthType.PERCENTAGE},margins:CM,children:[
+          new Paragraph({spacing:{before:0,after:0},children:[new TextRun({text:'7204764969 · drlgkscan@gmail.com',bold:true,size:16,font:'Calibri',color:pal.main})]})
         ]}),
-        new TableCell({borders:NO_BDR,width:{size:28,type:WidthType.PERCENTAGE},margins:CM,children:[
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Near Yamaha Showroom, Court Road, Sirsi',size:16,font:'Calibri',color:'555555'})]})
+        new TableCell({borders:NO_BDR,width:{size:34,type:WidthType.PERCENTAGE},margins:CM,children:[
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Dr Satish B · MBBS DMRD · KMC Reg. 69786',italics:true,size:15,font:'Calibri',color:'555555'})]})
         ]}),
-        new TableCell({borders:NO_BDR,width:{size:20,type:WidthType.PERCENTAGE},margins:CM,children:[
-          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:0},children:[new TextRun({text:'Dr Satish B  MBBS DMRD',bold:true,size:18,font:'Calibri',color:pal.main})]})
-        ]}),
-        new TableCell({borders:NO_BDR,width:{size:14,type:WidthType.PERCENTAGE},margins:CM,children:[
+        new TableCell({borders:NO_BDR,width:{size:30,type:WidthType.PERCENTAGE},margins:CM,children:[
           new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:0},children:[
-            new TextRun({text:'Pg ',size:16,font:'Calibri',color:'888888'}),
-            new TextRun({children:[PageNumber.CURRENT],size:16,font:'Calibri',color:'888888'}),
-            new TextRun({text:'/',size:16,font:'Calibri',color:'888888'}),
-            new TextRun({children:[PageNumber.TOTAL_PAGES],size:16,font:'Calibri',color:'888888'}),
-            new TextRun({text:'  PTO↓',size:15,font:'Calibri',color:'aaaaaa',italics:true})
+            new TextRun({text:'Page ',size:15,font:'Calibri',color:'888888'}),
+            new TextRun({children:[PageNumber.CURRENT],size:15,font:'Calibri',color:'888888',bold:true}),
+            new TextRun({text:' of ',size:15,font:'Calibri',color:'888888'}),
+            new TextRun({children:[PageNumber.TOTAL_PAGES],size:15,font:'Calibri',color:'888888',bold:true}),
+            new TextRun({text:'  ·  PTO↓',size:14,font:'Calibri',color:'aaaaaa',italics:true})
+          ]})
+        ]})
+      ]}),
+      // Second row: clinic address
+      new TableRow({children:[
+        new TableCell({borders:NO_BDR,width:{size:100,type:WidthType.PERCENTAGE},columnSpan:3,margins:{top:0,bottom:30,left:80,right:80},children:[
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Court Road, near Yamaha Showroom, Sirsi',size:14,font:'Calibri',color:'888888'})]})
+        ]})
+      ]})
+    ]
+  });
+
+  // ─── BOOKING NUDGE (last page) — WhatsApp + arrow + QR ───
+  const bookingNudge = new Table({
+    width:{size:100,type:WidthType.PERCENTAGE},
+    borders:{top:{style:BorderStyle.SINGLE,size:6,color:pal.main},bottom:{style:BorderStyle.SINGLE,size:6,color:pal.main},left:{style:BorderStyle.SINGLE,size:6,color:pal.main},right:{style:BorderStyle.SINGLE,size:6,color:pal.main},insideHorizontal:NB,insideVertical:NB},
+    rows:[
+      // Headline row
+      new TableRow({children:[
+        new TableCell({borders:NO_BDR,columnSpan:3,margins:{top:120,bottom:30,left:80,right:80},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0,line:280},children:[
+            new TextRun({text:'Book your next scan in advance',bold:true,size:26,font:'Calibri',color:pal.main})
+          ]}),
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:30,after:0,line:240},children:[
+            new TextRun({text:'Avoid waiting · come at your time · pay UPI advance',italics:true,size:18,font:'Calibri',color:'555555'})
+          ]})
+        ]})
+      ]}),
+      // Three-column row: WhatsApp instruction | arrow | QR
+      new TableRow({children:[
+        // Column 1: WhatsApp prompt
+        new TableCell({borders:NO_BDR,width:{size:50,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:60,bottom:60,left:80,right:40},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
+          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:30,line:240},children:[
+            new TextRun({text:'Easiest way',size:16,font:'Calibri',color:'666666'})
+          ]}),
+          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:0,line:260},children:[
+            new TextRun({text:'Send ',size:22,font:'Calibri',color:pal.main}),
+            new TextRun({text:' "Hi" ',size:22,bold:true,font:'Calibri',color:'FFFFFF',highlight:'green'}),
+            new TextRun({text:' on WhatsApp',size:22,font:'Calibri',color:pal.main})
+          ]}),
+          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:30,after:0,line:240},children:[
+            new TextRun({text:'7204764969',bold:true,size:26,font:'Calibri',color:pal.main})
+          ]}),
+          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:30,after:0,line:240},children:[
+            new TextRun({text:'we reply with a booking link',italics:true,size:14,font:'Calibri',color:'888888'})
+          ]})
+        ]}),
+        // Column 2: "or" + arrow
+        new TableCell({borders:NO_BDR,width:{size:14,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:60,bottom:60,left:0,right:0},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:30,line:240},children:[
+            new TextRun({text:'— or —',size:18,font:'Calibri',color:pal.main})
+          ]}),
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0,line:240},children:[
+            new TextRun({text:'→',bold:true,size:48,font:'Calibri',color:pal.main})
+          ]})
+        ]}),
+        // Column 3: QR + caption
+        new TableCell({borders:NO_BDR,width:{size:36,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:60,bottom:60,left:40,right:80},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:30,line:200},children:[
+            new TextRun({text:'Scan this QR',size:16,font:'Calibri',color:'666666'})
+          ]}),
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:30},children:[
+            new ImageRun({data:bookingQr,transformation:{width:96,height:96},type:'png'})
+          ]}),
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0,line:200},children:[
+            new TextRun({text:'opens booking page',italics:true,size:14,font:'Calibri',color:'888888'})
+          ]})
+        ]})
+      ]}),
+      // Tagline footer row
+      new TableRow({children:[
+        new TableCell({borders:{top:{style:BorderStyle.DASHED,size:3,color:'B8C5E0'},bottom:NB,left:NB,right:NB},columnSpan:3,margins:{top:60,bottom:80,left:80,right:80},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0,line:240},children:[
+            new TextRun({text:'Walk in at your booked time · no queue · pay only after the scan',size:16,font:'Calibri',color:'555555'})
           ]})
         ]})
       ]})
     ]
   });
+
+  // Empty paragraph before the booking nudge for visual separation
+  const nudgeSpacer = new Paragraph({spacing:{before:200,after:0},children:[new TextRun({text:'',size:8})]});
 
   // ─── ASSEMBLE DOCUMENT ───
   const doc=new Document({sections:[{
@@ -1167,9 +1301,9 @@ async function generateWordReport(fields) {
       size:{width:11906,height:16838},
       margin:{top:720,right:567,bottom:720,left:567,header:284,footer:284}
     }},
-    headers:{default:new Header({children:[headerTable,demoBlock]})},
+    headers:{default:new Header({children:[headerTable,demoTable]})},
     footers:{default:new Footer({children:[footerTable]})},
-    children:[scanTitle,...bodyElements]
+    children:[scanTitle,...bodyElements,nudgeSpacer,bookingNudge]
   }]});
 
   const _fn=fields.patientName.trim().split(' ')[0].replace(/[^a-zA-Z]/g,'');

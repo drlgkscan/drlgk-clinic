@@ -775,7 +775,7 @@ async function generateWordReport(fields) {
 
   // Single booking QR with patient phone prefill — encourages advance booking
   let bookingPrefillUrl = bookingUrl;
-  const phoneClean = (fields.phone || '').replace(/\D/g, '');
+  const phoneClean = String(fields.phone || '').replace(/\D/g, '');
   const params = new URLSearchParams();
   if (phoneClean.length === 10) params.append('phone', phoneClean);
   if (fields.patientName && fields.patientName !== 'N/A') params.append('name', fields.patientName);
@@ -2002,18 +2002,19 @@ async function lookupPatientByPhone() {
     // Find latest visit that doesn't have a finalized report yet
     const latestVisit = r.visits.find(v => v.report_status !== 'Ready' && v.report_status !== 'Delivered') || r.visits[0];
     // Build fields object compatible with confirmGenerate
+    // String() wrapping is defensive — Sheets may return numbers for fields like phone
     const f = {
-      patientName: r.patient.name || 'N/A',
-      age: computeAge(r.patient.dob) || 'N/A',
-      sex: r.patient.sex || 'N/A',
-      phone: r.patient.phone_primary || phone,
-      address: r.patient.address || 'N/A',
-      referralDoctor: latestVisit.referring_doctor_id === 'D-000' ? 'Self' : (latestVisit.referring_doctor_id || 'Self'),
+      patientName: String(r.patient.name || 'N/A'),
+      age: String(computeAge(r.patient.dob) || 'N/A'),
+      sex: String(r.patient.sex || 'N/A'),
+      phone: String(r.patient.phone_primary || phone),
+      address: String(r.patient.address || 'N/A'),
+      referralDoctor: String(latestVisit.referring_doctor_id === 'D-000' ? 'Self' : (latestVisit.referring_doctor_id || 'Self')),
       pregnancy: latestVisit.is_pregnancy ? 'Yes' : 'No',
-      lmp: latestVisit.lmp || '',
-      edd: latestVisit.edd || '',
-      scanCode: latestVisit.scan_code || '',
-      scanType: latestVisit.scan_type || 'General Study',
+      lmp: String(latestVisit.lmp || ''),
+      edd: String(latestVisit.edd || ''),
+      scanCode: String(latestVisit.scan_code || ''),
+      scanType: String(latestVisit.scan_type || 'General Study'),
       scanPrice: Number(latestVisit.amount_charged) || 0,
       advance: Number(latestVisit.advance_amount) || 0,
       amountPaid: Number(latestVisit.amount_paid_at_billing) || 0,
@@ -2022,10 +2023,10 @@ async function lookupPatientByPhone() {
       totalPayable: Number(latestVisit.total_payable) || 0,
       netPaid: Number(latestVisit.net_paid) || 0,
       pending: Number(latestVisit.amount_pending) || 0,
-      serial: latestVisit.serial_number || '',
+      serial: String(latestVisit.serial_number || ''),
       dateTime: latestVisit.visit_date ? new Date(latestVisit.visit_date).toLocaleString('en-IN') : '',
-      paymentMethod: latestVisit.payment_mode || 'Cash',
-      token: latestVisit.token_number || '',
+      paymentMethod: String(latestVisit.payment_mode || 'Cash'),
+      token: String(latestVisit.token_number || ''),
       // Backend-only fields used to link the report later
       _visit_id: latestVisit.visit_id,
       _patient_id: r.patient.patient_id,

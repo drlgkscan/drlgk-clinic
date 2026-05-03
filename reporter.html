@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Dr. LGK — Scan Room Reporter (build 2026-05-03-v8)</title>
+<title>Dr. LGK — Scan Room Reporter (build 2026-05-03-v12)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
 <script src="https://cdn.jsdelivr.net/npm/docx/build/index.umd.min.js"></script>
@@ -195,7 +195,7 @@ details summary{cursor:pointer;font-weight:600;color:#1565c0;font-size:13px;padd
     <div class="hdr-row">
       <div>
         <h2><i class="fas fa-file-medical"></i> Dr. L. G. Krishna Ultrasound Clinic</h2>
-        <p>Scan Room — PDF Bill → Word Report <span style="opacity:0.5;font-size:11px;">build 2026-05-03-v8</span></p>
+        <p>Scan Room — PDF Bill → Word Report <span style="opacity:0.5;font-size:11px;">build 2026-05-03-v12</span></p>
         <div class="report-counter">Reports today: <span id="reportCounter">0</span></div>
       </div>
       <button class="gear-btn" onclick="openSettings()"><i class="fas fa-cog"></i> Templates</button>
@@ -245,6 +245,12 @@ details summary{cursor:pointer;font-weight:600;color:#1565c0;font-size:13px;padd
     <div class="confirm-header"><i class="fas fa-clipboard-check"></i> Confirm Before Generating Report</div>
     <div class="confirm-body">
       <div class="confirm-grid" id="confirmGrid"></div>
+      <div class="indication-input-wrap" style="margin-top:12px;padding:10px 12px;background:#FFF7E0;border:1px dashed #d4a000;border-radius:6px;">
+        <label for="indicationInput" style="display:block;font-size:12px;color:#666;margin-bottom:4px;font-weight:600;">
+          <i class="fas fa-stethoscope" style="color:#8A6500;"></i> Clinical Indication <span style="color:#999;font-weight:400;">(optional — appears in report)</span>
+        </label>
+        <input type="text" id="indicationInput" placeholder="e.g. Right upper quadrant pain × 3 days, dyspepsia, nausea" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-family:inherit;font-size:13px;font-style:italic;color:#8A6500;background:#fff;" />
+      </div>
       <div class="confirm-actions">
         <button class="btn btn-confirm" onclick="confirmGenerate()"><i class="fas fa-check"></i> Generate Word</button>
         <button class="btn btn-cancel" onclick="cancelGenerate()"><i class="fas fa-times"></i> Cancel</button>
@@ -669,6 +675,10 @@ function cancelGenerate() { document.getElementById('confirmPanel').style.displa
 async function confirmGenerate() {
   if(!pendingFields) return;
   const fields=pendingFields; pendingFields=null;
+  // Read indication input (manual entry, optional)
+  const indEl = document.getElementById('indicationInput');
+  fields.indication = indEl ? (indEl.value || '').trim() : '';
+  if (indEl) indEl.value = '';  // clear for next patient
   document.getElementById('confirmPanel').style.display='none';
   setStatus('Generating Word report...','info');
   try {
@@ -696,7 +706,7 @@ function showTokenPanel(fields) {
   const phone=fields.phone;
   const hasPhone=phone&&phone!=='N/A'&&/^\d{10}$/.test(phone);
   const enMsg=`Your token is T-${fields.token}. Please come to the scan room. — Dr. L.G. Krishna Ultrasound Clinic, Sirsi`;
-  const knMsg=`ನಿಮ್ಮ ಟೋಕನ್ T-${fields.token}. ದಯವಿಟ್ಟು ಸ್ಕ್ಯಾನ್ ರೂಮ್‌ಗೆ ಬನ್ನಿ. — ಡಾ. ಎಲ್.ಜಿ. ಕೃಷ್ಣ ಅಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ಸಿರ್ಸಿ`;
+  const knMsg=`ನಿಮ್ಮ ಟೋಕನ್ T-${fields.token}. ದಯವಿಟ್ಟು ಸ್ಕ್ಯಾನ್ ರೂಮ್‌ಗೆ ಬನ್ನಿ. — ಡಾ. ಎಲ್.ಜಿ. ಕೃಷ್ಣ ಅಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ಶಿರಸಿ`;
   const actions=document.getElementById('tokenActions');
   // Add mark done button
   const doneBtn=document.createElement('button');
@@ -757,10 +767,11 @@ function makeRefCode(serial, token) {
   return 'LGK-' + Math.abs(h).toString(36).toUpperCase().slice(0, 5);
 }
 async function generateWordReport(fields) {
-  // Determine palette from bill date
+  // Day-of-week index from bill date (used ONLY for indication+study banner tint, NOT brand color)
   let dayIdx=new Date().getDay();
   if(fields.dateTime){ const dp=fields.dateTime.split(' ')[0]; if(dp){ const pts=dp.split('/'); if(pts.length===3){ const d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0])); if(!isNaN(d.getTime())) dayIdx=d.getDay(); } } }
-  const pal=DAY_PALETTES[dayIdx];
+  // Brand palette is FIXED — navy/purple always, regardless of day. (DAY_PALETTES retained for legacy refs but unused.)
+  const pal={main:'1A237E', accent:'6A1B9A'};
 
   let scanDate=todayStr;
   if(fields.dateTime){ const dt=fields.dateTime.split(' '); if(dt[0]) scanDate=dt[0]; }
@@ -971,29 +982,28 @@ async function generateWordReport(fields) {
     bodyElements = [ribbon, emptyLine(), ...bodyElements];
   }
 
-  // ─── SECURITY THREAD TEXT — computed first, used in headerTable ───
-  const SELF_REFS=['self','others','self/others','','n/a','na'];
+  // ─── SECURITY THREAD TEXT (Option D — bill ref + clinic short-code + glyph) ───
   const refDoc=fields.referralDoctor||'';
-  const isSelf=SELF_REFS.includes(refDoc.toLowerCase().trim());
-  const scanTime=fields.dateTime?(fields.dateTime.split(' ')[1]||''):'';
-  const threadChars={ABD:'◈',EP:'❀',NT:'❀',ANOMALY:'❀',GROWTH:'❀',SMALL:'✦',DOPPLER:'∿',GENERIC:'⁙'};
-  const tc=threadChars[group]||'⁙';
-  const fill='∿∿⚕∿∿◈∿∿◉∿∿⚕∿∿◎∿∿⚛∿∿⚕∿∿◈∿∿';
-  const pad=`${tc}·${tc}·${tc}·`;
-  // Build core content first, then pad to exactly 110 chars (safe single line for 72% A4 at 6pt Courier)
-  let core;
-  if(isSelf){
-    const flood=`${tc}·${tc}·∿∿⚕∿∿·${tc}·${tc}·◈·${tc}·${tc}·⚛·${tc}·${tc}·◉·${tc}·${tc}·∿∿⚕∿∿·${tc}·${tc}·◎·${tc}·${tc}·⚕·${tc}·${tc}`;
-    core=`${pad}${scanTime?scanTime+' · ':''}Dr Satish B ·${flood}`;
-  } else {
-    core=`${pad}${scanTime?scanTime+' · ':''}Dr Satish B ·${fill}· Dr ${refDoc} ·`;
-  }
-  // Pad with repeating tc pattern to fill exactly 90 chars, then hard stop
-  const TARGET=90;
-  const repeat=`${tc}·`;
-  let threadText=core;
-  while(threadText.length<TARGET) threadText+=repeat;
-  threadText=threadText.substring(0,TARGET);
+  const scanTime=fields.dateTime?(fields.dateTime.split(' ')[1]||''):'10:15';
+  const billRefStr = makeRefCode(fields.serial, fields.token);
+  const threadSegment = `#${billRefStr} · DRLGK·SIRSI ⚕ `;
+  const TARGET = 170;
+  let threadText = `◈·  ${scanTime} · Dr Satish B  ⚕  ${threadSegment}`;
+  while (threadText.length < TARGET - 4) threadText += threadSegment;
+  threadText = threadText.substring(0, TARGET - 4) + '·◈';
+
+  // ─── DAY-OF-WEEK PALETTE — affects Indication row + ABDOMEN STUDY banner only ───
+  // Re-uses dayIdx already computed at top of generateWordReport from bill date
+  const dayPalette = [
+    { bg: 'FAF8F0', fg: '6B5D2C' },  // Sun: Ivory / Olive
+    { bg: 'FFF7E0', fg: '8A6500' },  // Mon: Saffron / Amber
+    { bg: 'FFF0F0', fg: '8B2842' },  // Tue: Rose / Deep Rose
+    { bg: 'F0FAF0', fg: '2D6A4F' },  // Wed: Mint / Forest
+    { bg: 'F4F0FF', fg: '5E35B1' },  // Thu: Lavender / Deep Purple
+    { bg: 'F0F7FF', fg: '1565C0' },  // Fri: Azure / Deep Blue
+    { bg: 'FFF4E6', fg: 'A04500' }   // Sat: Peach / Burnt Orange
+  ];
+  const todayPal = dayPalette[dayIdx];
 
   // ─── PATIENT PHOTO FETCH (for header right column) ───
   // Fetch via backend (Drive direct fetch is CORS-blocked even for "anyone with link" files)
@@ -1012,6 +1022,39 @@ async function generateWordReport(fields) {
         else if (m.includes('png')) patientPhotoType = 'png';
         else if (m.includes('gif')) patientPhotoType = 'gif';
         else if (m.includes('bmp')) patientPhotoType = 'bmp';
+
+        // ─── CONVERT FETCHED PHOTO TO GRAYSCALE (ink-light, clinical look) ───
+        try {
+          const dataUrl = 'data:' + (r.mime_type||'image/jpeg') + ';base64,' + r.base64;
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = dataUrl;
+          });
+          // Render to canvas, apply grayscale, re-encode as PNG
+          const gCanvas = document.createElement('canvas');
+          gCanvas.width = img.naturalWidth || 280;
+          gCanvas.height = img.naturalHeight || 360;
+          const gctx = gCanvas.getContext('2d');
+          gctx.drawImage(img, 0, 0, gCanvas.width, gCanvas.height);
+          const imgData = gctx.getImageData(0, 0, gCanvas.width, gCanvas.height);
+          const px = imgData.data;
+          for (let i = 0; i < px.length; i += 4) {
+            const lum = 0.299 * px[i] + 0.587 * px[i+1] + 0.114 * px[i+2];
+            px[i] = px[i+1] = px[i+2] = lum;
+          }
+          gctx.putImageData(imgData, 0, 0);
+          const grayDataUrl = gCanvas.toDataURL('image/png');
+          const grayB64 = grayDataUrl.split(',')[1];
+          const grayBin = atob(grayB64);
+          const grayBuf = new Uint8Array(grayBin.length);
+          for (let i = 0; i < grayBin.length; i++) grayBuf[i] = grayBin.charCodeAt(i);
+          patientPhotoData = grayBuf;
+          patientPhotoType = 'png';  // converted to PNG
+        } catch (gerr) {
+          console.warn('Grayscale conversion failed, using original photo:', gerr);
+        }
       }
     } catch (e) { console.warn('Photo fetch failed:', e); }
   }
@@ -1056,41 +1099,114 @@ async function generateWordReport(fields) {
     } catch (e) { console.warn('Initials canvas failed:', e); }
   }
 
-  // ─── HEADER TABLE — bigger clinic name on left, patient photo on right ───
-  const headerTable=new Table({
-    width:{size:100,type:WidthType.PERCENTAGE},
-    borders:{top:NB,bottom:{style:BorderStyle.THICK,size:12,color:'111111'},left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
-    rows:[new TableRow({children:[
-      // Left cell: clinic name + Kannada + security thread
-      new TableCell({borders:NO_BDR,width:{size:74,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:30,bottom:30,left:0,right:40},children:[
-        new Paragraph({spacing:{before:0,after:0,line:260},children:[
-          new TextRun({text:'ಡಾ. ಎಲ್ ಜಿ ಕೃಷ್ಣ ಆಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ',font:'Tunga',size:24,italics:true,color:pal.main}),
-          new TextRun({text:'ಸಿರ್ಸಿ',font:'Tunga',size:24,italics:true,color:pal.accent})
-        ]}),
-        new Paragraph({spacing:{before:40,after:0,line:280},children:[
-          new TextRun({text:'Dr L G Krishna Ultrasound Clinic, ',font:'Calibri',size:40,bold:true,color:'111111'}),
-          new TextRun({text:'Sirsi',font:'Calibri',size:40,bold:true,color:pal.accent})
-        ]}),
-        new Paragraph({
-          spacing:{before:40,after:0,line:220},
-          border:{top:{style:BorderStyle.SINGLE,size:3,color:pal.main},bottom:{style:BorderStyle.SINGLE,size:3,color:pal.main}},
-          children:[new TextRun({text:threadText,size:12,font:'Courier New',color:pal.main})]
-        })
-      ]}),
-      // Right cell: patient photo (or initials fallback) — passport-size 90×115 (35×45 mm)
-      new TableCell({borders:NO_BDR,width:{size:26,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:20,bottom:20,left:0,right:0},children:[
-        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children: patientPhotoData ? [
-          new ImageRun({data:patientPhotoData,transformation:{width:95,height:120},type:patientPhotoType})
-        ] : [new TextRun({text:'',size:8})]})
-      ]})
+  // ─── HEADER LAYOUT (v23) — DXA twip widths matching FULL_W ───
+  // FULL_W = 10772 twips (matches A4 with 567+567 margins)
+  const W_LBL = 1100;
+  const W_NAME = 2100;
+  const W_AGE = 1300;
+  const W_DATE = 1700;
+  const TOTAL_DEMO_W = W_LBL + W_NAME + W_LBL + W_AGE + W_LBL + W_DATE;  // 8400
+  const PHOTO_CELL_W = 2172;
+  const GAP_W = 200;
+  const FULL_W = TOTAL_DEMO_W + GAP_W + PHOTO_CELL_W;  // 10772 = exact usable width
+
+  // Top corner table — Diagnostic Ultrasonography Centre (left) | Kannada subtitle (center) | PCPNDT Reg (right)
+  const SIDE_W = 2400;
+  const CENTER_W = FULL_W - 2 * SIDE_W;
+
+  const topCornerTable = new Table({
+    width: { size: FULL_W, type: WidthType.DXA },
+    columnWidths: [SIDE_W, CENTER_W, SIDE_W],
+    borders: NO_BDR,
+    rows: [new TableRow({ children: [
+      new TableCell({
+        borders: NO_BDR, width: { size: SIDE_W, type: WidthType.DXA },
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        children: [new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 0, after: 0, line: 240 },
+          children: [new TextRun({ text: 'Diagnostic Ultrasonography Centre', italics: true, size: 16, font: 'Calibri', color: '888888' })]
+        })]
+      }),
+      new TableCell({
+        borders: NO_BDR, width: { size: CENTER_W, type: WidthType.DXA },
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0, line: 240 },
+          children: [
+            new TextRun({ text: 'ಡಾ. ಎಲ್ ಜಿ ಕೃಷ್ಣ ಆಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ', font: 'Tunga', size: 28, italics: true, color: pal.main }),
+            new TextRun({ text: 'ಶಿರಸಿ', font: 'Tunga', size: 28, italics: true, color: pal.accent })
+          ]
+        })]
+      }),
+      new TableCell({
+        borders: NO_BDR, width: { size: SIDE_W, type: WidthType.DXA },
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        children: [
+          new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0, line: 240 },
+            children: [new TextRun({ text: 'PCPNDT Reg. No. 115', italics: true, size: 16, font: 'Calibri', color: '888888' })]
+          }),
+          new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0, line: 220 },
+            children: [new TextRun({ text: '(Uttara Kannada)', italics: true, size: 14, font: 'Calibri', color: '999999' })]
+          })
+        ]
+      })
     ]})]
   });
 
-  // Thin accent line below header
-  const accentLine=new Paragraph({
-    spacing:{before:30,after:60},
-    border:{bottom:{style:BorderStyle.SINGLE,size:4,color:pal.accent}},
-    children:[new TextRun({text:'',size:8})]
+  // Main header table — English clinic name with ⚕ flanks + security thread
+  const headerTable = new Table({
+    width: { size: FULL_W, type: WidthType.DXA },
+    columnWidths: [FULL_W],
+    borders: { top: NB, bottom: { style: BorderStyle.THICK, size: 12, color: '111111' } },
+    rows: [new TableRow({ children: [
+      new TableCell({
+        borders: NO_BDR, width: { size: FULL_W, type: WidthType.DXA },
+        margins: { top: 0, bottom: 30, left: 0, right: 0 },
+        children: [
+          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 0, line: 280 }, children: [
+            new TextRun({ text: '─── ⚕ ─── ', font: 'Calibri', size: 36, color: pal.main }),
+            new TextRun({ text: 'Dr L G Krishna Ultrasound Clinic, ', font: 'Calibri', size: 44, bold: true, color: '111111' }),
+            new TextRun({ text: 'Sirsi', font: 'Calibri', size: 44, bold: true, color: pal.accent }),
+            new TextRun({ text: ' ─── ⚕ ───', font: 'Calibri', size: 36, color: pal.main })
+          ]}),
+          new Paragraph({
+            spacing: { before: 60, after: 0, line: 220 },
+            border: { top: { style: BorderStyle.SINGLE, size: 3, color: pal.main }, bottom: { style: BorderStyle.SINGLE, size: 3, color: pal.main } },
+            children: [new TextRun({ text: threadText, size: 10, font: 'Courier New', color: pal.main })]
+          })
+        ]
+      })
+    ]})]
+  });
+
+  // ─── PAGE 2+ continuation header (compact single-line + thread) ───
+  const headerTableContinuation = new Table({
+    width: { size: FULL_W, type: WidthType.DXA },
+    columnWidths: [FULL_W],
+    borders: { top: NB, bottom: { style: BorderStyle.SINGLE, size: 6, color: pal.main } },
+    rows: [new TableRow({ children: [
+      new TableCell({
+        borders: NO_BDR, width: { size: FULL_W, type: WidthType.DXA },
+        margins: { top: 0, bottom: 40, left: 0, right: 0 },
+        children: [
+          new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 0, after: 0, line: 260 }, children: [
+            new TextRun({ text: 'Dr L G Krishna Ultrasound Clinic, Sirsi', bold: true, size: 22, font: 'Calibri', color: pal.main }),
+            new TextRun({ text: '   ·   Patient: ', size: 18, font: 'Calibri', color: '888888' }),
+            new TextRun({ text: String(fields.patientName||''), bold: true, size: 18, font: 'Calibri', color: '111111' }),
+            new TextRun({ text: '   ·   Bill: ', size: 18, font: 'Calibri', color: '888888' }),
+            new TextRun({ text: billRefStr, bold: true, size: 18, font: 'Calibri', color: '111111' }),
+            new TextRun({ text: '   ·   ', size: 18, color: '888888' }),
+            new TextRun({ text: 'continued from page 1', italics: true, size: 16, color: '999999' })
+          ]}),
+          new Paragraph({
+            spacing: { before: 50, after: 0, line: 220 },
+            border: { top: { style: BorderStyle.SINGLE, size: 3, color: pal.main }, bottom: { style: BorderStyle.SINGLE, size: 3, color: pal.main } },
+            children: [new TextRun({ text: threadText, size: 10, font: 'Courier New', color: pal.main })]
+          })
+        ]
+      })
+    ]})]
   });
 
   // ─── DEMOGRAPHICS TABLE ───
@@ -1128,194 +1244,245 @@ async function generateWordReport(fields) {
     });
   };
 
-  // ─── COMPACT DEMOGRAPHICS — 3 rows, dense, no photo (photo is in header) ───
-  // Helper for compact label-value cell
-  // Helper: label cell with explicit width
-  const dcL = (txt, widthPct) => new TableCell({
-    borders:ALL_LB, margins:CM_T,
-    width:{size:widthPct,type:WidthType.PERCENTAGE},
-    shading:{fill:'F4F4F4',type:ShadingType.CLEAR},
-    children:[new Paragraph({spacing:{before:0,after:0,line:240},children:[new TextRun({text:txt,bold:false,size:18,font:'Calibri',color:'555555'})]})]
+  // ─── DEMOGRAPHICS HELPERS — DXA twip widths, larger fonts (v23) ───
+  const dcLT = (txt, w) => new TableCell({
+    borders: ALL_LB, margins: CM_T,
+    width: { size: w, type: WidthType.DXA },
+    shading: { fill: 'F4F4F4', type: ShadingType.CLEAR },
+    children: [new Paragraph({ spacing: { before: 0, after: 0, line: 280 }, children: [new TextRun({ text: txt, size: 22, font: 'Calibri', color: '555555' })] })]
   });
-  // Helper: value cell with explicit width
-  const dcV = (txt, widthPct, isLight) => new TableCell({
-    borders:ALL_LB, margins:CM_T,
-    width:{size:widthPct,type:WidthType.PERCENTAGE},
-    children:[new Paragraph({spacing:{before:0,after:0,line:240},children:[new TextRun({text:txt||'—',bold:true,size:isLight?18:20,font:'Calibri',color:isLight?'555555':'1A237E'})]})]
+  const dcVT = (txt, w) => new TableCell({
+    borders: ALL_LB, margins: CM_T,
+    width: { size: w, type: WidthType.DXA },
+    children: [new Paragraph({ spacing: { before: 0, after: 0, line: 280 }, children: [new TextRun({ text: txt || '—', bold: true, size: 24, font: 'Calibri', color: '1A237E' })] })]
   });
-  // Helper: wide value cell that spans multiple columns
-  const dcVwide = (txt, span, widthPct) => new TableCell({
-    borders:ALL_LB, margins:CM_T,
-    columnSpan: span,
-    width:{size:widthPct,type:WidthType.PERCENTAGE},
-    children:[new Paragraph({spacing:{before:0,after:0,line:240},children:[new TextRun({text:txt||'—',bold:true,size:18,font:'Calibri',color:'555555'})]})]
+  const dcVwideT = (txt, span, w) => new TableCell({
+    borders: ALL_LB, margins: CM_T, columnSpan: span,
+    width: { size: w, type: WidthType.DXA },
+    children: [new Paragraph({ spacing: { before: 0, after: 0, line: 280 }, children: [new TextRun({ text: txt || '—', bold: true, size: 22, font: 'Calibri', color: '555555' })] })]
   });
 
   const phoneVal = (fields.phone && fields.phone !== 'N/A') ? String(fields.phone) : '—';
   const addrVal = (fields.address && fields.address !== 'N/A') ? String(fields.address) : '—';
-  const billRefDisplay = makeRefCode(fields.serial, fields.token);
-  // Age/Sex combined: prefer compact "45/M" form to avoid wrapping
-  const ageSexVal = (fields.age||'') + ' / ' + (fields.sex==='F'?'F':fields.sex==='M'?'M':(fields.sex||''));
+  const billRefDisplay = billRefStr;
+  const ageSexVal = (fields.age||'') + ' / ' + (fields.sex==='F'?'Female':fields.sex==='M'?'Male':(fields.sex||''));
+  const indicationVal = String(fields.indication || '').trim();
+  const studyTitleText = (fields.scanType || 'ULTRASOUND STUDY').toUpperCase() + ' — FINDINGS';
 
-  // 6 columns total, widths sum to 100%:
-  // [Name lbl 9%][Name val 30%][Age/Sex lbl 9%][Age/Sex val 12%][Date lbl 8%][Date val 32%]
-  const demoTable=new Table({
-    width:{size:100,type:WidthType.PERCENTAGE},
-    borders:{top:LB,bottom:LB,left:LB,right:LB,insideHorizontal:LB,insideVertical:LB},
-    rows:[
+  // INNER demographics — 5 ROWS (Name/Phone/RefDr/Indication/STUDY BANNER)
+  const innerDemo = new Table({
+    width: { size: TOTAL_DEMO_W, type: WidthType.DXA },
+    borders: { top: LB, bottom: LB, left: LB, right: LB, insideHorizontal: LB, insideVertical: LB },
+    columnWidths: [W_LBL, W_NAME, W_LBL, W_AGE, W_LBL, W_DATE],
+    rows: [
       // Row 1: Name | Age/Sex | Date
-      new TableRow({children:[
-        dcL('Name', 9),
-        dcV(String(fields.patientName||''), 30),
-        dcL('Age/Sex', 9),
-        dcV(ageSexVal, 12),
-        dcL('Date', 8),
-        dcV(scanDateClean, 32)
+      new TableRow({ children: [
+        dcLT('Name', W_LBL), dcVT(String(fields.patientName||''), W_NAME),
+        dcLT('Age/Sex', W_LBL), dcVT(ageSexVal, W_AGE),
+        dcLT('Date', W_LBL), dcVT(scanDateClean, W_DATE)
       ]}),
-      // Row 2: Phone | Address (spans last 4 columns)
-      new TableRow({children:[
-        dcL('Phone', 9),
-        dcV(phoneVal, 30),
-        dcL('Address', 9),
-        dcVwide(addrVal, 3, 52)
+      // Row 2: Phone | Address
+      new TableRow({ children: [
+        dcLT('Phone', W_LBL), dcVT(phoneVal, W_NAME),
+        dcLT('Address', W_LBL),
+        dcVwideT(addrVal, 3, W_AGE + W_LBL + W_DATE)
       ]}),
-      // Row 3: Ref Dr | Bill (spans last 4 columns)
-      new TableRow({children:[
-        dcL('Ref Dr', 9),
-        dcV(String(fields.referralDoctor||''), 30),
-        dcL('Bill', 9),
-        dcVwide(billRefDisplay, 3, 52)
+      // Row 3: Ref Dr | Bill
+      new TableRow({ children: [
+        dcLT('Ref Dr', W_LBL), dcVT(String(fields.referralDoctor||''), W_NAME),
+        dcLT('Bill', W_LBL),
+        dcVwideT(billRefDisplay, 3, W_AGE + W_LBL + W_DATE)
+      ]}),
+      // Row 4: Indication (day-tinted)
+      new TableRow({ children: [
+        dcLT('Indication', W_LBL),
+        new TableCell({
+          borders: ALL_LB, margins: CM_T, columnSpan: 5,
+          width: { size: W_NAME + W_LBL + W_AGE + W_LBL + W_DATE, type: WidthType.DXA },
+          shading: { fill: todayPal.bg, type: ShadingType.CLEAR },
+          children: [new Paragraph({ spacing: { before: 0, after: 0, line: 280 }, children: [new TextRun({ text: indicationVal || 'Not specified', italics: true, size: 22, font: 'Calibri', color: indicationVal ? todayPal.fg : '999999' })] })]
+        })
+      ]}),
+      // Row 5: STUDY TITLE banner (day-tinted bg, paired fg, navy borders top/bottom)
+      new TableRow({ children: [
+        new TableCell({
+          borders: { top: { style: BorderStyle.SINGLE, size: 8, color: pal.main }, bottom: { style: BorderStyle.SINGLE, size: 8, color: pal.main }, left: ALL_LB.left, right: ALL_LB.right },
+          margins: { top: 80, bottom: 80, left: 80, right: 80 },
+          columnSpan: 6,
+          width: { size: TOTAL_DEMO_W, type: WidthType.DXA },
+          shading: { fill: todayPal.bg, type: ShadingType.CLEAR },
+          children: [new Paragraph({
+            alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0, line: 280 },
+            children: [new TextRun({ text: studyTitleText, font: 'Calibri', size: 26, bold: true, color: todayPal.fg })]
+          })]
+        })
       ]})
     ]
   });
 
-  // ─── COMBINED SCAN-FINDINGS TITLE (saffron tint, replaces standalone scanTitle) ───
-  const scanTitle = new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 100, after: 40 },
-    border: {
-      top: { style: BorderStyle.SINGLE, size: 4, color: pal.main },
-      bottom: { style: BorderStyle.SINGLE, size: 4, color: pal.main }
-    },
-    shading: { fill: 'FFF7E0', type: ShadingType.CLEAR },
-    children: [new TextRun({
-      text: (fields.scanType || 'ULTRASOUND STUDY').toUpperCase() + ' — FINDINGS',
-      font: 'Calibri', size: 26, bold: true, color: '8A6500'
+  // OUTER WRAPPER — innerDemo + gap + photo (photo spans full 5-row height)
+  const demoTable = new Table({
+    width: { size: FULL_W, type: WidthType.DXA },
+    borders: NO_BDR,
+    columnWidths: [TOTAL_DEMO_W, GAP_W, PHOTO_CELL_W],
+    rows: [new TableRow({
+      children: [
+        new TableCell({
+          borders: NO_BDR,
+          width: { size: TOTAL_DEMO_W, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.TOP,
+          margins: { top: 0, bottom: 0, left: 0, right: 0 },
+          children: [innerDemo]
+        }),
+        new TableCell({
+          borders: NO_BDR,
+          width: { size: GAP_W, type: WidthType.DXA },
+          children: [new Paragraph({ children: [new TextRun({ text: '', size: 8 })] })]
+        }),
+        new TableCell({
+          borders: ALL_LB,
+          width: { size: PHOTO_CELL_W, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 30, bottom: 30, left: 30, right: 30 },
+          children: [new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 0, after: 0 },
+            children: patientPhotoData ? [
+              new ImageRun({ data: patientPhotoData, transformation: { width: 105, height: 135 }, type: patientPhotoType })
+            ] : [new TextRun({ text: '', size: 8 })]
+          })]
+        })
+      ]
     })]
   });
 
-  // ─── FOOTER ───
-  const footerTable=new Table({
-    width:{size:100,type:WidthType.PERCENTAGE},
-    borders:{top:{style:BorderStyle.SINGLE,size:4,color:pal.main},bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
-    rows:[
-      new TableRow({children:[
-        new TableCell({borders:NO_BDR,width:{size:36,type:WidthType.PERCENTAGE},margins:CM,children:[
-          new Paragraph({spacing:{before:0,after:0},children:[new TextRun({text:'7204764969 · drlgkscan@gmail.com',bold:true,size:16,font:'Calibri',color:pal.main})]})
-        ]}),
-        new TableCell({borders:NO_BDR,width:{size:34,type:WidthType.PERCENTAGE},margins:CM,children:[
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Dr Satish B · MBBS DMRD · KMC Reg. 69786',italics:true,size:15,font:'Calibri',color:'555555'})]})
-        ]}),
-        new TableCell({borders:NO_BDR,width:{size:30,type:WidthType.PERCENTAGE},margins:CM,children:[
-          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:0},children:[
-            new TextRun({text:'Page ',size:15,font:'Calibri',color:'888888'}),
-            new TextRun({children:[PageNumber.CURRENT],size:15,font:'Calibri',color:'888888',bold:true}),
-            new TextRun({text:' of ',size:15,font:'Calibri',color:'888888'}),
-            new TextRun({children:[PageNumber.TOTAL_PAGES],size:15,font:'Calibri',color:'888888',bold:true}),
-            new TextRun({text:'  ·  PTO↓',size:14,font:'Calibri',color:'aaaaaa',italics:true})
-          ]})
-        ]})
+  // scanTitle is no longer a separate paragraph — it's built into innerDemo as Row 5
+  // Empty placeholder kept so existing references compile, but it's not used in document children
+  const scanTitle = new Paragraph({ spacing: { before: 0, after: 0 }, children: [new TextRun({ text: '', size: 4 })] });
+
+  // ─── FOOTER WITH BOOKING NUDGE INTEGRATED (v23) ───
+  // Layout per row:
+  // Row 1: [QR 65px] | Need a follow-up scan? + Send "Hi" + 7204764969 | Page X of Y · PTO↓ | Dr Satish B / MBBS·DMRD / KMC Reg.
+  // Row 2: Services line (centered) — includes Hi-Tech Laboratory Services
+  // Row 3: Address + email (centered)
+  const footerTable = new Table({
+    width: { size: FULL_W, type: WidthType.DXA },
+    columnWidths: [1100, 4400, 2200, 3072],
+    borders: { top: { style: BorderStyle.SINGLE, size: 4, color: pal.main } },
+    rows: [
+      // Row 1: QR | Booking | Page | Doctor
+      new TableRow({ children: [
+        new TableCell({
+          borders: NO_BDR, width: { size: 1100, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 60, bottom: 30, left: 60, right: 30 },
+          children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0 },
+            children: [new ImageRun({ data: bookingQr, transformation: { width: 65, height: 65 }, type: 'png' })]
+          })]
+        }),
+        new TableCell({
+          borders: NO_BDR, width: { size: 4400, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 60, bottom: 30, left: 30, right: 60 },
+          children: [
+            new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 0, after: 0, line: 240 },
+              children: [new TextRun({ text: 'Need a follow-up scan?', bold: true, size: 18, font: 'Calibri', color: pal.main })]
+            }),
+            new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 30, after: 0, line: 240 },
+              children: [
+                new TextRun({ text: 'Send ', size: 16, font: 'Calibri', color: '555555' }),
+                new TextRun({ text: ' "Hi" ', bold: true, size: 16, font: 'Calibri', color: 'FFFFFF', highlight: 'green' }),
+                new TextRun({ text: ' to ', size: 16, font: 'Calibri', color: '555555' }),
+                new TextRun({ text: '7204764969', bold: true, size: 16, font: 'Calibri', color: pal.main }),
+                new TextRun({ text: ' or scan QR', size: 16, font: 'Calibri', color: '555555' })
+              ]
+            }),
+            new Paragraph({ alignment: AlignmentType.LEFT, spacing: { before: 20, after: 0 },
+              children: [new TextRun({ text: 'Book ahead — come at your time, no waiting', italics: true, size: 13, font: 'Calibri', color: '888888' })]
+            })
+          ]
+        }),
+        new TableCell({
+          borders: NO_BDR, width: { size: 2200, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 60, bottom: 30, left: 60, right: 60 },
+          children: [
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 0, line: 260 }, children: [
+              new TextRun({ text: 'Page ', size: 16, font: 'Calibri', color: '888888' }),
+              new TextRun({ children: [PageNumber.CURRENT], size: 16, font: 'Calibri', color: '111111', bold: true }),
+              new TextRun({ text: ' of ', size: 16, font: 'Calibri', color: '888888' }),
+              new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16, font: 'Calibri', color: '111111', bold: true })
+            ]}),
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 30, after: 0 },
+              children: [new TextRun({ text: 'PTO↓', size: 14, font: 'Calibri', color: 'aaaaaa', italics: true })]
+            })
+          ]
+        }),
+        new TableCell({
+          borders: NO_BDR, width: { size: 3072, type: WidthType.DXA },
+          verticalAlign: VerticalAlign.CENTER,
+          margins: { top: 60, bottom: 30, left: 60, right: 60 },
+          children: [
+            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0, line: 240 },
+              children: [new TextRun({ text: 'Dr Satish B', bold: true, size: 18, font: 'Calibri', color: pal.main })]
+            }),
+            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0, line: 240 },
+              children: [new TextRun({ text: 'MBBS · DMRD', size: 14, font: 'Calibri', color: '555555', italics: true })]
+            }),
+            new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 0, after: 0, line: 240 },
+              children: [new TextRun({ text: 'KMC Reg. 69786', size: 14, font: 'Calibri', color: '555555', italics: true })]
+            })
+          ]
+        })
       ]}),
-      // Second row: clinic address
-      new TableRow({children:[
-        new TableCell({borders:NO_BDR,width:{size:100,type:WidthType.PERCENTAGE},columnSpan:3,margins:{top:0,bottom:30,left:80,right:80},children:[
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Court Road, near Yamaha Showroom, Sirsi',size:14,font:'Calibri',color:'888888'})]})
-        ]})
-      ]})
+      // Row 2: Services line (with Hi-Tech Laboratory Services)
+      new TableRow({ children: [new TableCell({
+        borders: { top: { style: BorderStyle.SINGLE, size: 2, color: 'DDDDDD' } },
+        columnSpan: 4,
+        margins: { top: 30, bottom: 0, left: 80, right: 80 },
+        children: [
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [
+            new TextRun({ text: 'Ultrasound: 2D · 3D · 4D · Color Doppler · Pregnancy & Anomaly Scans · Marker Studies (NT/NB/PAPP-A)  ', size: 13, italics: true, font: 'Calibri', color: '666666' }),
+            new TextRun({ text: '·  Hi-Tech Laboratory Services', size: 13, italics: true, bold: true, font: 'Calibri', color: pal.main })
+          ]})
+        ]
+      })]}),
+      // Row 3: Address + email
+      new TableRow({ children: [new TableCell({
+        borders: NO_BDR, columnSpan: 4, margins: { top: 20, bottom: 30, left: 80, right: 80 },
+        children: [
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [
+            new TextRun({ text: 'Court Road, near Yamaha Showroom, Sirsi  ·  ', size: 14, font: 'Calibri', color: '888888' }),
+            new TextRun({ text: 'drlgkscan@gmail.com', size: 14, font: 'Calibri', color: '888888', bold: true })
+          ]})
+        ]
+      })]})
     ]
   });
 
-  // ─── BOOKING NUDGE (last page) — WhatsApp + arrow + QR ───
-  const bookingNudge = new Table({
-    width:{size:100,type:WidthType.PERCENTAGE},
-    borders:{top:{style:BorderStyle.SINGLE,size:6,color:pal.main},bottom:{style:BorderStyle.SINGLE,size:6,color:pal.main},left:{style:BorderStyle.SINGLE,size:6,color:pal.main},right:{style:BorderStyle.SINGLE,size:6,color:pal.main},insideHorizontal:NB,insideVertical:NB},
-    rows:[
-      // Headline row
-      new TableRow({children:[
-        new TableCell({borders:NO_BDR,columnSpan:3,margins:{top:120,bottom:30,left:80,right:80},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0,line:280},children:[
-            new TextRun({text:'Book your next scan in advance',bold:true,size:26,font:'Calibri',color:pal.main})
-          ]}),
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:30,after:0,line:240},children:[
-            new TextRun({text:'Avoid waiting · come at your time · pay UPI advance',italics:true,size:18,font:'Calibri',color:'555555'})
-          ]})
-        ]})
-      ]}),
-      // Three-column row: WhatsApp instruction | arrow | QR
-      new TableRow({children:[
-        // Column 1: WhatsApp prompt
-        new TableCell({borders:NO_BDR,width:{size:50,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:60,bottom:60,left:80,right:40},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
-          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:30,line:240},children:[
-            new TextRun({text:'Easiest way',size:16,font:'Calibri',color:'666666'})
-          ]}),
-          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:0,line:260},children:[
-            new TextRun({text:'Send ',size:22,font:'Calibri',color:pal.main}),
-            new TextRun({text:' "Hi" ',size:22,bold:true,font:'Calibri',color:'FFFFFF',highlight:'green'}),
-            new TextRun({text:' on WhatsApp',size:22,font:'Calibri',color:pal.main})
-          ]}),
-          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:30,after:0,line:240},children:[
-            new TextRun({text:'7204764969',bold:true,size:26,font:'Calibri',color:pal.main})
-          ]}),
-          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:30,after:0,line:240},children:[
-            new TextRun({text:'we reply with a booking link',italics:true,size:14,font:'Calibri',color:'888888'})
-          ]})
-        ]}),
-        // Column 2: "or" + arrow
-        new TableCell({borders:NO_BDR,width:{size:14,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:60,bottom:60,left:0,right:0},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:30,line:240},children:[
-            new TextRun({text:'— or —',size:18,font:'Calibri',color:pal.main})
-          ]}),
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0,line:240},children:[
-            new TextRun({text:'→',bold:true,size:48,font:'Calibri',color:pal.main})
-          ]})
-        ]}),
-        // Column 3: QR + caption
-        new TableCell({borders:NO_BDR,width:{size:36,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.CENTER,margins:{top:60,bottom:60,left:40,right:80},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:30,line:200},children:[
-            new TextRun({text:'Scan this QR',size:16,font:'Calibri',color:'666666'})
-          ]}),
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:30},children:[
-            new ImageRun({data:bookingQr,transformation:{width:96,height:96},type:'png'})
-          ]}),
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0,line:200},children:[
-            new TextRun({text:'opens booking page',italics:true,size:14,font:'Calibri',color:'888888'})
-          ]})
-        ]})
-      ]}),
-      // Tagline footer row
-      new TableRow({children:[
-        new TableCell({borders:{top:{style:BorderStyle.DASHED,size:3,color:'B8C5E0'},bottom:NB,left:NB,right:NB},columnSpan:3,margins:{top:60,bottom:80,left:80,right:80},shading:{fill:'FAFBFF',type:ShadingType.CLEAR},children:[
-          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0,line:240},children:[
-            new TextRun({text:'Walk in at your booked time · no queue · pay only after the scan',size:16,font:'Calibri',color:'555555'})
-          ]})
-        ]})
-      ]})
-    ]
+  // ─── ASSEMBLE DOCUMENT (v23 — titlePage:true for different page-1 vs page-2+ headers) ───
+  const doc = new Document({
+    features: { updateFields: true },
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 11906, height: 16838 },
+          margin: { top: 720, right: 567, bottom: 720, left: 567, header: 284, footer: 284 }
+        },
+        titlePage: true  // enables headers.first vs headers.default
+      },
+      headers: {
+        first: new Header({ children: [topCornerTable, headerTable, demoTable] }),
+        default: new Header({ children: [headerTableContinuation] })
+      },
+      footers: {
+        first: new Footer({ children: [footerTable] }),
+        default: new Footer({ children: [footerTable] })
+      },
+      // Body: just the findings text — booking nudge is now in footer, signature is now in footer
+      children: bodyElements
+    }]
   });
-
-  // Empty paragraph before the booking nudge for visual separation
-  const nudgeSpacer = new Paragraph({spacing:{before:200,after:0},children:[new TextRun({text:'',size:8})]});
-
-  // ─── ASSEMBLE DOCUMENT ───
-  const doc=new Document({sections:[{
-    properties:{page:{
-      size:{width:11906,height:16838},
-      margin:{top:720,right:567,bottom:720,left:567,header:284,footer:284}
-    }},
-    headers:{default:new Header({children:[headerTable,demoTable]})},
-    footers:{default:new Footer({children:[footerTable]})},
-    children:[scanTitle,...bodyElements,nudgeSpacer,bookingNudge]
-  }]});
 
   const _fn=fields.patientName.trim().split(' ')[0].replace(/[^a-zA-Z]/g,'');
   const sc=(fields.scanCode||fields.scanType||'scan').replace(/\s+/g,'').replace(/[^a-zA-Z0-9]/g,'');
@@ -1374,7 +1541,7 @@ function buildABD(f, secHdr, subHdr, paired4, emptyLine, impLine) {
   const isMale=(f.sex||'').toLowerCase().includes('m');
   const elems=[];
 
-  elems.push(secHdr('FINDINGS'));
+  // FINDINGS header omitted — already shown in scanTitle banner
   elems.push(inlinePara('Liver','Normal in size and echotexture. No focal lesion. Portal vein appears normal.'));
   elems.push(inlinePara('Gallbladder','Normal in size and wall thickness. No calculi or polyps. CBD is not dilated.'));
   elems.push(inlinePara('Pancreas','Normal in size and echotexture. No focal lesion or ductal dilatation.'));
@@ -1395,9 +1562,17 @@ function buildABD(f, secHdr, subHdr, paired4, emptyLine, impLine) {
 
   elems.push(impLine());
   elems.push(secHdr('IMPRESSION'));
-  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
-  elems.push(inlinePara('Recommendation',''));
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'1. ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Normal study. No significant abnormality detected.',size:24,font:'Calibri'})
+  ]}));
   elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'Recommendation: ',bold:true,size:22,font:'Calibri'}),
+    new TextRun({text:'Clinical correlation. No specific follow-up unless clinically indicated.',size:22,font:'Calibri',italics:true,color:'555555'})
+  ]}));
+  elems.push(emptyLine());
+  // Body signature REMOVED — doctor info now in footer (every page)
   return elems;
 }
 
@@ -1405,7 +1580,7 @@ function buildEP(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTableCRL, pcp
   const isFol=(f.scanCode||'').toUpperCase().includes('FS')||(f.scanCode||'').toUpperCase().includes('FOL')||(f.scanCode||'').toUpperCase()==='FO';
   const elems=[];
   if(isFol){
-    elems.push(secHdr('FINDINGS'));
+    // FINDINGS header omitted — already shown in scanTitle banner
     elems.push(inlinePara('Uterus','Normal in size and position. Myometrium homogeneous. Endometrium      mm — Trilaminar pattern.'));
     elems.push(inlinePara('Right Ovary','Normal. Dominant follicle      mm. No cyst.'));
     elems.push(inlinePara('Left Ovary','Normal. Dominant follicle      mm. No cyst.'));
@@ -1413,7 +1588,7 @@ function buildEP(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTableCRL, pcp
   } else {
     elems.push(secHdr('GESTATIONAL AGE'));
     elems.push(gaTableCRL());
-    elems.push(secHdr('FINDINGS'));
+    // FINDINGS header omitted — already shown in scanTitle banner
     elems.push(inlinePara('Uterus','Anteverted, normal in size. Myometrium homogeneous. No fibroid.'));
     elems.push(inlinePara('Gestational Sac','Present, regular borders. MSD      mm.'));
     elems.push(inlinePara('Yolk Sac',''));
@@ -1424,8 +1599,13 @@ function buildEP(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTableCRL, pcp
   }
   elems.push(impLine());
   elems.push(secHdr('IMPRESSION'));
-  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'1. ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Single live intra-uterine fetus.',size:24,font:'Calibri'})
+  ]}));
+  elems.push(emptyLine());
   elems.push(pcpndtPara());
+  // Body signature REMOVED — doctor info now in footer (every page)
   return elems;
 }
 
@@ -1448,8 +1628,13 @@ function buildNT(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTableCRL, pcp
   elems.push(inlinePara('Adnexa','No obvious adnexal mass or cyst. No free fluid in POD.'));
   elems.push(impLine());
   elems.push(secHdr('IMPRESSION'));
-  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'1. ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Single live intra-uterine fetus.',size:24,font:'Calibri'})
+  ]}));
+  elems.push(emptyLine());
   elems.push(pcpndtPara());
+  // Body signature REMOVED — doctor info now in footer (every page)
   return elems;
 }
 
@@ -1477,8 +1662,13 @@ function buildAnomaly(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTable, p
   elems.push(placentaRow());
   elems.push(impLine());
   elems.push(secHdr('IMPRESSION'));
-  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'1. ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Single live intra-uterine fetus.',size:24,font:'Calibri'})
+  ]}));
+  elems.push(emptyLine());
   elems.push(pcpndtPara());
+  // Body signature REMOVED — doctor info now in footer (every page)
   return elems;
 }
 
@@ -1524,10 +1714,18 @@ function buildGrowth(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTable, pl
   elems.push(new Paragraph({spacing:{before:0,after:20,line:276},children:[new TextRun({text:'Not evaluated. (Edit if assessed.)',italics:true,size:24,font:'Calibri',color:'777777'})]}));
   elems.push(impLine());
   elems.push(secHdr('IMPRESSION'));
-  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'1. ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Single live intra-uterine fetus, gestation as charted above.',size:24,font:'Calibri'})
+  ]}));
+  elems.push(emptyLine());
   elems.push(subHdr('RECOMMENDATION'));
-  elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'Routine antenatal follow-up.',size:22,font:'Calibri',italics:true,color:'555555'})
+  ]}));
+  elems.push(emptyLine());
   elems.push(pcpndtPara());
+  // Body signature REMOVED — doctor info now in footer (every page)
   return elems;
 }
 
@@ -1536,7 +1734,7 @@ function buildSmall(f, secHdr, subHdr, emptyLine, impLine) {
   const blank=()=>new Paragraph({spacing:{before:0,after:28,line:264},children:[new TextRun({text:'',size:24,font:'Calibri'})]});
   const elems=[];
 
-  elems.push(secHdr('FINDINGS'));
+  // FINDINGS header omitted — already shown in scanTitle banner
 
   if(c.includes('BR')){
     elems.push(inlinePara('Right Breast',''));
@@ -1575,9 +1773,17 @@ function buildSmall(f, secHdr, subHdr, emptyLine, impLine) {
 
   elems.push(impLine());
   elems.push(secHdr('IMPRESSION'));
-  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
-  elems.push(inlinePara('Recommendation',''));
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'1. ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Normal study. No significant abnormality detected.',size:24,font:'Calibri'})
+  ]}));
   elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'Recommendation: ',bold:true,size:22,font:'Calibri'}),
+    new TextRun({text:'Clinical correlation. No specific follow-up unless clinically indicated.',size:22,font:'Calibri',italics:true,color:'555555'})
+  ]}));
+  elems.push(emptyLine());
+  // Body signature REMOVED — doctor info now in footer (every page)
   return elems;
 }
 
@@ -1591,20 +1797,36 @@ function buildDoppler(f, secHdr, subHdr, emptyLine, impLine, dopplerTable) {
   elems.push(inlinePara('Additional Findings',''));
   elems.push(impLine());
   elems.push(secHdr('IMPRESSION'));
-  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
-  elems.push(inlinePara('Recommendation',''));
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'1. ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Normal study. No significant abnormality detected.',size:24,font:'Calibri'})
+  ]}));
+  elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'Recommendation: ',bold:true,size:22,font:'Calibri'}),
+    new TextRun({text:'Clinical correlation.',size:22,font:'Calibri',italics:true,color:'555555'})
+  ]}));
+  // Body signature REMOVED — doctor info now in footer (every page)
   return elems;
 }
 
 function buildGeneric(secHdr, subHdr, emptyLine, impLine) {
   const elems=[];
-  elems.push(secHdr('FINDINGS'));
+  // FINDINGS header omitted — already shown in scanTitle banner
   elems.push(emptyLine()); elems.push(emptyLine());
   elems.push(emptyLine()); elems.push(emptyLine());
   elems.push(impLine());
   elems.push(secHdr('IMPRESSION'));
-  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
-  elems.push(inlinePara('Recommendation',''));
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'1. ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Normal study. No significant abnormality detected.',size:24,font:'Calibri'})
+  ]}));
+  elems.push(emptyLine());
+  elems.push(new Paragraph({spacing:{before:60,after:0,line:280},children:[
+    new TextRun({text:'Recommendation: ',bold:true,size:22,font:'Calibri'}),
+    new TextRun({text:'Clinical correlation.',size:22,font:'Calibri',italics:true,color:'555555'})
+  ]}));
+  // Body signature REMOVED — doctor info now in footer (every page)
   return elems;
 }
 </script>

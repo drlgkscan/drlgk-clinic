@@ -1081,18 +1081,26 @@ async function generateWordReport(fields) {
   });
 
   // ─── PATIENT PHOTO (if available) ───
-  // Fetch from fields._patient_photo_url (set when phone-lookup mode used)
+  // Fetch via backend (Drive direct-fetch is CORS-blocked even for "anyone with link" files)
   let patientPhotoData = null;
+  let patientPhotoType = 'png';
   if (fields._patient_photo_url) {
     try {
-      // Drive URLs need to be converted: https://drive.google.com/file/d/<id>/view → uc?id=<id>
-      let url = fields._patient_photo_url;
-      const idMatch = url.match(/\/d\/([^\/]+)/);
-      if (idMatch) url = 'https://drive.google.com/uc?export=view&id=' + idMatch[1];
-      const resp = await fetch(url);
-      if (resp.ok) {
-        const buf = await resp.arrayBuffer();
-        patientPhotoData = new Uint8Array(buf);
+      const r = await apiCall('getFileBase64', { url: fields._patient_photo_url });
+      if (r && r.base64) {
+        // Decode base64 → Uint8Array
+        const binStr = atob(r.base64);
+        const buf = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) buf[i] = binStr.charCodeAt(i);
+        patientPhotoData = buf;
+        // ImageRun type accepts: 'jpg', 'png', 'gif', 'bmp'
+        const m = (r.mime_type || '').toLowerCase();
+        if (m.includes('jpeg') || m.includes('jpg')) patientPhotoType = 'jpg';
+        else if (m.includes('png')) patientPhotoType = 'png';
+        else if (m.includes('gif')) patientPhotoType = 'gif';
+        else if (m.includes('bmp')) patientPhotoType = 'bmp';
+      } else if (r && r.error) {
+        console.warn('Photo fetch returned error:', r.error);
       }
     } catch (e) { console.warn('Photo fetch failed:', e); }
   }
@@ -1107,7 +1115,7 @@ async function generateWordReport(fields) {
         new TableCell({borders:NO_BDR,width:{size:78,type:WidthType.PERCENTAGE},margins:{top:0,bottom:0,left:0,right:60},children:[demoTable]}),
         new TableCell({borders:NO_BDR,width:{size:22,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.TOP,margins:{top:0,bottom:0,left:0,right:0},children:[
           new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[
-            new ImageRun({data:patientPhotoData,transformation:{width:90,height:115},type:'png'})
+            new ImageRun({data:patientPhotoData,transformation:{width:90,height:115},type:patientPhotoType})
           ]})
         ]})
       ]})]
@@ -1166,7 +1174,15 @@ async function generateWordReport(fields) {
 
   const _fn=fields.patientName.trim().split(' ')[0].replace(/[^a-zA-Z]/g,'');
   const sc=(fields.scanCode||fields.scanType||'scan').replace(/\s+/g,'').replace(/[^a-zA-Z0-9]/g,'');
-  const dt=scanDateClean.replace(/\//g,'');
+  // Date format: scanDateClean is "d/m/yyyy" (e.g. "2/5/2026") → reformat to "yyyy-mm-dd" (e.g. "2026-05-02")
+  let dt = scanDateClean.replace(/\//g,'');  // fallback
+  const dParts = scanDateClean.split('/');
+  if (dParts.length === 3) {
+    const dd = String(dParts[0]).padStart(2,'0');
+    const mm = String(dParts[1]).padStart(2,'0');
+    const yyyy = dParts[2];
+    dt = `${yyyy}-${mm}-${dd}`;
+  }
   const _ser=(fields.serial||'').replace(/\s+/g,'').replace(/[^a-zA-Z0-9]/g,'').slice(0,20);
   const filename=`${_fn}_${sc}_${dt}_${_ser}.docx`;
   const blob=await Packer.toBlob(doc);
@@ -1450,11 +1466,16 @@ function buildGeneric(secHdr, subHdr, emptyLine, impLine) {
 </div></div></div>
 
 <script>
-// ── Shared API ───────────────────────────────────────────────────────
-const CLINIC_API=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8080':'http://'+window.location.hostname+':8080';
+// ── Shared API (legacy Sharavathi local-server queue) ────────────────
+// Disabled on https:// (GitHub Pages) since browsers block http:// fetches from secure pages.
+// This polling only worked on the old localhost setup. New system uses cloud backend (apiCall) instead.
+const SHARAVATHI_LEGACY_ACTIVE = (window.location.protocol === 'http:');
+const CLINIC_API = SHARAVATHI_LEGACY_ACTIVE
+  ? ((window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8080':'http://'+window.location.hostname+':8080')
+  : null;
 function getDeviceToken(){let t=localStorage.getItem('drlgk_device_token');if(!t){t='DV-'+Math.random().toString(36).substr(2,8).toUpperCase()+Math.random().toString(36).substr(2,8).toUpperCase();localStorage.setItem('drlgk_device_token',t);}return t;}
-async function apiGet(ep){try{const r=await fetch(CLINIC_API+ep+(ep.includes('?')?'&':'?')+'t='+Date.now());return r.json();}catch(e){return {};}}
-async function apiPost(ep,data){try{const r=await fetch(CLINIC_API+ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return r.json();}catch(e){return {};}}
+async function apiGet(ep){if(!SHARAVATHI_LEGACY_ACTIVE)return {};try{const r=await fetch(CLINIC_API+ep+(ep.includes('?')?'&':'?')+'t='+Date.now());return r.json();}catch(e){return {};}}
+async function apiPost(ep,data){if(!SHARAVATHI_LEGACY_ACTIVE)return {};try{const r=await fetch(CLINIC_API+ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return r.json();}catch(e){return {};}}
 
 // ── Live queue panel ─────────────────────────────────────────────────
 let queueList=[];
@@ -1654,6 +1675,10 @@ function svSpeak(text){
 }
 
 async function handleScanVoice(cmd){
+  if (!SHARAVATHI_LEGACY_ACTIVE) {
+    setStatus('Voice queue control is part of the legacy Sharavathi system, not active on cloud deployment.', 'warn');
+    return;
+  }
   const API=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8080':'http://'+window.location.hostname+':8080';
 
   // NEXT TOKEN

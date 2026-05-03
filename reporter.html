@@ -1,0 +1,1941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dr. LGK — Scan Room Reporter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+<script src="https://cdn.jsdelivr.net/npm/docx/build/index.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<!-- Backend constants -->
+<script>
+  const API_URL   = 'https://script.google.com/macros/s/AKfycbwGY8fS6H2HIThJjwtF5dJatVFdbjnVkAbRLBJ6tW2uhsM5Yql4sAfQXPUxniG5grH_/exec';
+  const API_TOKEN = 'drlgk-2026-clinic-secret-x7K9pQm3vN2tL5';
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#f0f4f8;padding:12px;}
+.container{max-width:700px;margin:0 auto;}
+.app-header{background:linear-gradient(135deg,#1a237e,#283593,#303f9f);color:#fff;padding:14px 18px;border-radius:10px 10px 0 0;box-shadow:0 2px 8px rgba(0,0,0,.15);}
+.app-header h2{font-size:16px;}
+.app-header p{font-size:11px;opacity:.8;margin-top:2px;}
+.hdr-row{display:flex;justify-content:space-between;align-items:center;}
+.report-counter{background:rgba(255,255,255,.15);display:inline-block;padding:2px 10px;border-radius:12px;margin-top:5px;font-size:12px;font-weight:600;}
+.gear-btn{background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:13px;}
+.gear-btn:hover{background:rgba(255,255,255,.35);}
+
+/* TEMPLATE TOGGLE */
+.tpl-toggle{background:#fff;padding:10px 16px;border:none;border-top:2px dashed #90caf9;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.tpl-label{font-size:12px;font-weight:700;color:#1a237e;}
+.tpl-btn{padding:5px 14px;border-radius:20px;border:2px solid #1565c0;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;background:#fff;color:#1565c0;}
+.tpl-btn.active{background:#1565c0;color:#fff;}
+.tpl-hint{font-size:11px;color:#888;font-style:italic;}
+
+.upload-zone{background:#fff;padding:18px;text-align:center;border:2px dashed #90caf9;border-top:none;border-radius:0 0 10px 10px;}
+.upload-zone p{color:#555;font-size:13px;margin-bottom:10px;}
+.btn{padding:9px 18px;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;color:#fff;transition:all .2s;display:inline-flex;align-items:center;gap:5px;}
+.btn-primary{background:#1565c0;}.btn-primary:hover{background:#0d47a1;}
+.btn-danger{background:#e53935;font-size:11px;padding:5px 10px;}
+.btn-export{background:#6a1b9a;font-size:11px;padding:5px 10px;}
+#status{margin:10px 0;padding:10px 14px;font-size:12px;border-radius:6px;display:none;}
+#status.ok{display:block;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;}
+#status.err{display:block;background:#ffebee;color:#c62828;border:1px solid #ef9a9a;}
+#status.info{display:block;background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;}
+#status.warn{display:block;background:#fff8e1;color:#e65100;border:1px solid #ffe082;}
+
+/* CONFIRM PANEL */
+.confirm-panel{display:none;margin-top:12px;background:#fff;border:2px solid #ff9800;border-radius:8px;overflow:hidden;}
+.confirm-header{background:#fff3e0;padding:10px 16px;font-weight:600;color:#e65100;font-size:13px;}
+.confirm-body{padding:14px;}
+.confirm-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px;margin-bottom:12px;}
+.confirm-grid .lbl{font-weight:600;color:#666;}
+.confirm-grid .val{color:#1a237e;font-weight:500;}
+.confirm-grid .val.warn{color:#e53935;font-weight:700;}
+.confirm-actions{display:flex;gap:10px;justify-content:center;}
+.btn-confirm{background:#2e7d32;padding:9px 22px;}
+.btn-cancel{background:#757575;padding:9px 22px;}
+
+/* TOKEN PANEL */
+.token-panel{display:none;margin-top:12px;border-radius:10px;overflow:hidden;border:2px solid #1565c0;}
+.token-header{background:linear-gradient(135deg,#c62828,#e53935);color:#fff;padding:12px 18px;text-align:center;}
+.token-number{font-size:40px;font-weight:900;letter-spacing:2px;line-height:1;}
+.token-patient{font-size:15px;font-weight:600;margin-top:3px;opacity:.95;}
+.token-scan{font-size:11px;margin-top:2px;opacity:.8;}
+.token-actions{background:#fff;padding:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+.btn-call{background:#1565c0;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:5px;}
+.btn-wa{background:#25D366;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:5px;}
+.btn-wa-kn{background:#128C7E;}
+
+/* TRACKER */
+.tracker{margin-top:16px;border:2px solid #1565c0;border-radius:8px;overflow:hidden;}
+.tracker-hd{background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;}
+.tracker-hd h3{font-size:14px;}
+.live-dot{width:8px;height:8px;background:#4caf50;border-radius:50%;display:inline-block;animation:pulse 1.5s infinite;margin-right:4px;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.tracker-bd{padding:10px 14px;background:#fafafa;}
+.t-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #ddd;font-size:13px;}
+.t-row:last-child{border-bottom:none;}
+.t-lbl{font-weight:600;color:#444;}
+.t-val{font-weight:700;font-size:14px;color:#1565c0;}
+.t-val.green{color:#2e7d32;}.t-val.orange{color:#e65100;}
+.tracker-ft{background:#e3f2fd;padding:8px 14px;display:flex;gap:8px;flex-wrap:wrap;}
+details{margin-top:10px;}
+details summary{cursor:pointer;font-weight:600;color:#1565c0;font-size:13px;padding:7px 0;}
+.log-tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:5px;}
+.log-tbl th{background:#1565c0;color:#fff;padding:4px 5px;text-align:left;font-size:10px;}
+.log-tbl td{padding:4px 5px;border-bottom:1px solid #e0e0e0;}
+.log-tbl tr:nth-child(even){background:#f5f5f5;}
+.hidden-render{position:absolute;left:-9999px;top:-9999px;}
+
+/* SETTINGS MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:#fff;border-radius:10px;width:660px;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.3);}
+.modal-hdr{background:linear-gradient(135deg,#1a237e,#303f9f);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;}
+.modal-hdr h3{font-size:15px;}
+.modal-close{background:none;border:none;color:#fff;font-size:20px;cursor:pointer;padding:0 4px;}
+.modal-body{padding:16px;overflow-y:auto;flex:1;}
+.tab-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;}
+.tab-btn{padding:5px 12px;border-radius:6px;border:2px solid #1565c0;font-size:11px;font-weight:700;cursor:pointer;background:#fff;color:#1565c0;transition:all .2s;}
+.tab-btn.active{background:#1565c0;color:#fff;}
+.tpl-group{display:none;}.tpl-group.active{display:block;}
+.tpl-group label{font-size:12px;font-weight:700;color:#1a237e;display:block;margin-bottom:5px;}
+.tpl-group .hint{font-size:11px;color:#888;font-style:italic;margin-bottom:6px;}
+.tpl-group textarea{width:100%;height:200px;font-family:'Consolas','Courier New',monospace;font-size:12px;border:1.5px solid #90caf9;border-radius:6px;padding:8px;resize:vertical;line-height:1.5;}
+.tpl-actions{display:flex;gap:8px;margin-top:8px;}
+.btn-save-tpl{background:#1565c0;color:#fff;padding:7px 16px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;}
+.btn-clear-tpl{background:#e53935;color:#fff;padding:7px 12px;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;}
+.save-msg{font-size:11px;color:#2e7d32;font-weight:600;display:none;}
+</style>
+</head>
+<body style="display:flex;flex-direction:column;min-height:100vh">
+
+<!-- ──────────── DEVICE PAIRING GATE ──────────── -->
+<div id="pairGate" style="position:fixed; inset:0; background:linear-gradient(135deg,#0c2348,#1a3a6b,#2557a7); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; font-family:'Segoe UI',Arial,sans-serif;">
+  <div style="background:#fff; border-radius:16px; padding:32px 28px; max-width:400px; width:100%; box-shadow:0 8px 32px rgba(0,0,0,0.35);">
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-size:13px; color:#5a6378; font-weight:500; margin-bottom:4px;">Dr. L. G. Krishna Ultrasound Clinic</div>
+      <div style="font-size:20px; color:#1a3a6b; font-weight:700;">Reporter — Pair Device</div>
+    </div>
+    <div id="pairPrompt">
+      <div style="background:#eaf2ff; border-left:3px solid #2557a7; border-radius:6px; padding:11px 14px; font-size:12.5px; color:#1e40af; line-height:1.5; margin-bottom:18px;">
+        This device is not yet authorised for the reporter. Get a pairing code from admin, then enter it below. <strong>One-time setup.</strong>
+      </div>
+      <label style="font-size:12px; font-weight:500; color:#5a6378; display:block; margin-bottom:6px;">Pairing code</label>
+      <input type="text" id="pairCodeInput" placeholder="e.g. PAIR-XXXX-XXXX"
+             autocomplete="off" spellcheck="false"
+             style="width:100%; padding:14px; font-size:16px; font-family:monospace; letter-spacing:2px; text-align:center; border:2px solid #d6dae3; border-radius:10px; text-transform:uppercase;"
+             oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9-]/g,'').slice(0,16);">
+      <label style="font-size:12px; font-weight:500; color:#5a6378; display:block; margin:14px 0 6px;">Device label</label>
+      <input type="text" id="deviceLabelInput" placeholder="e.g. Scan room PC"
+             style="width:100%; padding:12px; font-size:14px; border:2px solid #d6dae3; border-radius:10px;">
+      <button onclick="attemptPair()" style="width:100%; padding:13px; margin-top:14px; background:#1a3a6b; color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer;">
+        Pair This Device
+      </button>
+      <div id="pairError" style="display:none; margin-top:12px; padding:10px 14px; background:#fee2e2; color:#991b1b; border-left:3px solid #dc2626; border-radius:6px; font-size:13px;"></div>
+      <div style="margin-top:18px; padding-top:14px; border-top:1px solid #eee; font-size:12px; color:#5a6378; line-height:1.5;">
+        Need a pairing code? Contact admin at<br>
+        <strong style="color:#1a3a6b;">drlgkscan@gmail.com</strong>
+      </div>
+    </div>
+    <div id="pairValidating" style="display:none; text-align:center; padding:24px 0;">
+      <div style="display:inline-block; width:32px; height:32px; border:3px solid #c8dafd; border-top-color:#1a3a6b; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div style="margin-top:12px; font-size:13px; color:#5a6378;">Pairing device...</div>
+    </div>
+    <div id="revokedScreen" style="display:none; text-align:center; padding:8px 0;">
+      <div style="font-size:36px; margin-bottom:8px;">🔒</div>
+      <div style="font-size:16px; font-weight:600; color:#dc2626; margin-bottom:10px;">Access Revoked</div>
+      <div style="font-size:13px; color:#5a6378; line-height:1.5; margin-bottom:16px;">
+        This device has been revoked by admin.<br>
+        Contact <strong style="color:#1a3a6b;">drlgkscan@gmail.com</strong>
+      </div>
+      <button onclick="resetForRepair()" style="padding:10px 20px; background:#fff; color:#1a3a6b; border:1.5px solid #1a3a6b; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;">
+        Pair Again
+      </button>
+    </div>
+  </div>
+</div>
+<style>@keyframes spin { to { transform:rotate(360deg); } }</style>
+
+<div id="mainApp" style="display:none; flex-direction:column; flex:1;">
+<div style="display:flex;flex:1;overflow:hidden">
+<div id="queueSidePanel" style="width:240px;min-width:220px;background:#1e293b;border-right:1px solid #334155;padding:12px;overflow-y:auto;display:flex;flex-direction:column;flex-shrink:0">
+  <div style="font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+    <span>Today's Queue</span>
+    <span id="queueCount" style="background:#1A7A5E;color:#fff;padding:1px 7px;border-radius:10px;font-size:10px">0</span>
+  </div>
+  <!-- Walk-in add -->
+  <div id="walkinForm" style="display:none;background:#0f172a;border-radius:8px;padding:10px;margin-bottom:10px;border:1px solid #1A7A5E">
+    <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;font-weight:700">WALK-IN / EMERGENCY</div>
+    <input id="wiName" placeholder="Patient name" style="width:100%;padding:6px 8px;background:#1e293b;border:1px solid #334155;border-radius:5px;color:#f1f5f9;font-size:11px;margin-bottom:5px">
+    <input id="wiScan" placeholder="Scan type" style="width:100%;padding:6px 8px;background:#1e293b;border:1px solid #334155;border-radius:5px;color:#f1f5f9;font-size:11px;margin-bottom:5px">
+    <div style="display:flex;gap:5px;align-items:center;margin-bottom:6px">
+      <input type="checkbox" id="wiEmerg" style="accent-color:#ef4444">
+      <label for="wiEmerg" style="font-size:10px;color:#f87171">Emergency</label>
+    </div>
+    <div style="display:flex;gap:5px">
+      <button onclick="addWalkin()" style="flex:1;padding:6px;background:#1A7A5E;color:#fff;border:none;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">Add</button>
+      <button onclick="document.getElementById('walkinForm').style.display='none'" style="flex:1;padding:6px;background:#1e293b;color:#94a3b8;border:none;border-radius:5px;font-size:11px;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+  <button onclick="document.getElementById('walkinForm').style.display=document.getElementById('walkinForm').style.display==='none'?'block':'none'" style="width:100%;padding:5px;background:#0f172a;color:#1A7A5E;border:1px dashed #1A7A5E;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Walk-in / Emergency</button>
+  <div id="queueCards"></div>
+  <div id="recoveryBanner" style="display:none;margin-top:8px;padding:6px 8px;background:#0f2a1a;border:1px solid #1A7A5E;border-radius:6px;font-size:10px;color:#4ade80;font-weight:700;text-align:center;"></div>
+</div>
+<div style="flex:1;overflow-y:auto">
+<div class="container">
+  <div class="app-header">
+    <div class="hdr-row">
+      <div>
+        <h2><i class="fas fa-file-medical"></i> Dr. L. G. Krishna Ultrasound Clinic</h2>
+        <p>Scan Room — PDF Bill → Word Report v6</p>
+        <div class="report-counter">Reports today: <span id="reportCounter">0</span></div>
+      </div>
+      <button class="gear-btn" onclick="openSettings()"><i class="fas fa-cog"></i> Templates</button>
+    </div>
+  </div>
+
+  <!-- TEMPLATE TOGGLE -->
+  <div class="tpl-toggle">
+    <span class="tpl-label">Report Template:</span>
+    <button class="tpl-btn active" id="btnDefault" onclick="setTplMode('default')">⚕ Default</button>
+    <button class="tpl-btn" id="btnMine" onclick="setTplMode('mine')">👤 My Format</button>
+    <span class="tpl-hint" id="tplHint">Using built-in default template</span>
+  </div>
+
+  <div class="upload-zone">
+    <!-- Mode A: Phone lookup (preferred when backend reachable) -->
+    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:12px; margin-bottom:10px;">
+      <div style="font-size:12px; font-weight:700; color:#075985; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
+        <i class="fas fa-mobile-alt"></i> Quick Lookup — Patient Phone
+      </div>
+      <div style="display:flex; gap:6px;">
+        <input type="tel" id="phoneLookupInput" placeholder="10-digit phone" maxlength="10" inputmode="numeric"
+               style="flex:1; padding:8px 10px; font-size:13px; border:1.5px solid #cbd5e1; border-radius:5px;"
+               oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);"
+               onkeypress="if(event.key==='Enter') lookupPatientByPhone();">
+        <button class="btn btn-primary" onclick="lookupPatientByPhone()" style="padding:8px 14px; font-size:12px;">
+          <i class="fas fa-search"></i> Find
+        </button>
+      </div>
+      <p style="font-size:10.5px; color:#64748b; margin-top:6px; margin-bottom:0;">Pulls latest visit + patient photo from clinic database.</p>
+    </div>
+
+    <!-- Mode B: Drag PDF (offline / dire-situation fallback) -->
+    <div style="background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:12px;">
+      <div style="font-size:11px; font-weight:700; color:#9a3412; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">
+        <i class="fas fa-file-pdf"></i> Fallback — Upload Bill PDF
+      </div>
+      <p style="font-size:11px; color:#666; margin-bottom:8px;">Use when network/system fails. Drag/drop bill PDF (e.g. forwarded by patient via WhatsApp).</p>
+      <input type="file" id="pdfInput" accept="application/pdf" style="font-size:12px;"><br><br>
+      <button class="btn btn-primary" onclick="processPDF()" style="font-size:12px;"><i class="fas fa-search"></i> Extract & Preview</button>
+    </div>
+  </div>
+  <div id="status"></div>
+
+  <!-- CONFIRM PANEL -->
+  <div class="confirm-panel" id="confirmPanel">
+    <div class="confirm-header"><i class="fas fa-clipboard-check"></i> Confirm Before Generating Report</div>
+    <div class="confirm-body">
+      <div class="confirm-grid" id="confirmGrid"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-confirm" onclick="confirmGenerate()"><i class="fas fa-check"></i> Generate Word</button>
+        <button class="btn btn-cancel" onclick="cancelGenerate()"><i class="fas fa-times"></i> Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOKEN PANEL -->
+  <div class="token-panel" id="tokenPanel">
+    <div class="token-header">
+      <div class="token-number" id="tokenDisplay">T-0</div>
+      <div class="token-patient" id="tokenPatient"></div>
+      <div class="token-scan" id="tokenScan"></div>
+    </div>
+    <div class="token-actions" id="tokenActions"></div>
+  </div>
+
+  <div class="hidden-render">
+    <canvas id="watermarkCanvas"></canvas>
+    <canvas id="qr1Canvas" width="200" height="200"></canvas>
+    <canvas id="qr2Canvas" width="200" height="200"></canvas>
+  </div>
+
+  <!-- TRACKER -->
+  <div class="tracker">
+    <div class="tracker-hd">
+      <h3><span class="live-dot"></span>Live Collection Tracker</h3>
+      <span id="trackerDate" style="font-size:11px;opacity:.8;"></span>
+    </div>
+    <div class="tracker-bd">
+      <div class="t-row"><span class="t-lbl">Total Scans</span><span class="t-val" id="tTotal">0</span></div>
+      <div class="t-row"><span class="t-lbl">Cash Collection</span><span class="t-val green" id="tCash">₹0</span></div>
+      <div class="t-row"><span class="t-lbl">UPI Collection</span><span class="t-val green" id="tUPI">₹0</span></div>
+      <div class="t-row"><span class="t-lbl">Total Collected</span><span class="t-val green" id="tCollected">₹0</span></div>
+      <div class="t-row"><span class="t-lbl">Total Pending</span><span class="t-val orange" id="tPending">₹0</span></div>
+    </div>
+    <div class="tracker-ft">
+      <button class="btn btn-danger" onclick="resetTracker()"><i class="fas fa-trash"></i> Reset Day</button>
+      <button class="btn btn-export" onclick="exportCSV()"><i class="fas fa-download"></i> Export CSV</button>
+    </div>
+  </div>
+  <details>
+    <summary><i class="fas fa-list"></i> Today's Reports (<span id="logCount">0</span>)</summary>
+    <table class="log-tbl">
+      <thead><tr><th>#</th><th>Token</th><th>Time</th><th>Patient</th><th>Scan</th><th>Paid</th><th>Method</th></tr></thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </details>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3><i class="fas fa-cog"></i> Template Editor — My Format</h3>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:#555;margin-bottom:10px;">Type your template below for each scan group. ALL CAPS lines = section headers. Normal lines = body text. Empty lines = spacing. Saves permanently to this PC.</p>
+      <div class="tab-row">
+        <button class="tab-btn active" onclick="switchTab('abd')">ABD / Pelvis</button>
+        <button class="tab-btn" onclick="switchTab('ep')">EP / Follicular</button>
+        <button class="tab-btn" onclick="switchTab('nt')">NT Scan</button>
+        <button class="tab-btn" onclick="switchTab('anomaly')">Anomaly</button>
+        <button class="tab-btn" onclick="switchTab('growth')">Growth</button>
+        <button class="tab-btn" onclick="switchTab('small')">Small Parts</button>
+        <button class="tab-btn" onclick="switchTab('doppler')">Doppler</button>
+      </div>
+      <div class="tpl-group active" id="tg-abd">
+        <label>Abdomen / Pelvis Template</label>
+        <div class="hint">Tip: Use ALL CAPS for main headings (LIVER, IMPRESSION etc.)</div>
+        <textarea id="ta-abd" placeholder="LIVER&#10;&#10;GALLBLADDER&#10;&#10;..."></textarea>
+        <div class="tpl-actions">
+          <button class="btn-save-tpl" onclick="saveTpl('abd')">Save</button>
+          <button class="btn-clear-tpl" onclick="clearTpl('abd')">Clear</button>
+          <span class="save-msg" id="sm-abd">✓ Saved</span>
+        </div>
+      </div>
+      <div class="tpl-group" id="tg-ep">
+        <label>Early Pregnancy / Follicular Template</label>
+        <div class="hint"></div>
+        <textarea id="ta-ep" placeholder="UTERUS&#10;&#10;GESTATIONAL SAC&#10;&#10;..."></textarea>
+        <div class="tpl-actions">
+          <button class="btn-save-tpl" onclick="saveTpl('ep')">Save</button>
+          <button class="btn-clear-tpl" onclick="clearTpl('ep')">Clear</button>
+          <span class="save-msg" id="sm-ep">✓ Saved</span>
+        </div>
+      </div>
+      <div class="tpl-group" id="tg-nt">
+        <label>NT Scan Template</label>
+        <div class="hint"></div>
+        <textarea id="ta-nt" placeholder="NT MEASUREMENTS&#10;&#10;..."></textarea>
+        <div class="tpl-actions">
+          <button class="btn-save-tpl" onclick="saveTpl('nt')">Save</button>
+          <button class="btn-clear-tpl" onclick="clearTpl('nt')">Clear</button>
+          <span class="save-msg" id="sm-nt">✓ Saved</span>
+        </div>
+      </div>
+      <div class="tpl-group" id="tg-anomaly">
+        <label>Anomaly / Mid-Trimester Template</label>
+        <div class="hint"></div>
+        <textarea id="ta-anomaly" placeholder="FETAL PROFILE&#10;&#10;FETAL MORPHOLOGY&#10;&#10;..."></textarea>
+        <div class="tpl-actions">
+          <button class="btn-save-tpl" onclick="saveTpl('anomaly')">Save</button>
+          <button class="btn-clear-tpl" onclick="clearTpl('anomaly')">Clear</button>
+          <span class="save-msg" id="sm-anomaly">✓ Saved</span>
+        </div>
+      </div>
+      <div class="tpl-group" id="tg-growth">
+        <label>Growth / Late Trimester Template</label>
+        <div class="hint"></div>
+        <textarea id="ta-growth" placeholder="GESTATIONAL AGE&#10;&#10;FETAL PROFILE&#10;&#10;..."></textarea>
+        <div class="tpl-actions">
+          <button class="btn-save-tpl" onclick="saveTpl('growth')">Save</button>
+          <button class="btn-clear-tpl" onclick="clearTpl('growth')">Clear</button>
+          <span class="save-msg" id="sm-growth">✓ Saved</span>
+        </div>
+      </div>
+      <div class="tpl-group" id="tg-small">
+        <label>Small Parts Template</label>
+        <div class="hint"></div>
+        <textarea id="ta-small" placeholder="FINDINGS&#10;&#10;IMPRESSION&#10;&#10;RECOMMENDATION"></textarea>
+        <div class="tpl-actions">
+          <button class="btn-save-tpl" onclick="saveTpl('small')">Save</button>
+          <button class="btn-clear-tpl" onclick="clearTpl('small')">Clear</button>
+          <span class="save-msg" id="sm-small">✓ Saved</span>
+        </div>
+      </div>
+      <div class="tpl-group" id="tg-doppler">
+        <label>Doppler Template</label>
+        <div class="hint"></div>
+        <textarea id="ta-doppler" placeholder="VESSEL STUDIED&#10;&#10;FINDINGS&#10;&#10;IMPRESSION"></textarea>
+        <div class="tpl-actions">
+          <button class="btn-save-tpl" onclick="saveTpl('doppler')">Save</button>
+          <button class="btn-clear-tpl" onclick="clearTpl('doppler')">Clear</button>
+          <span class="save-msg" id="sm-doppler">✓ Saved</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CLOSURE PROTECTION ───────────────────────────────
+window.onbeforeunload = () => true;
+
+// ─── DOCX DESTRUCTURE ────────────────────────────────
+const {
+  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, ImageRun,
+  Header, Footer, AlignmentType, BorderStyle, WidthType, ShadingType,
+  VerticalAlign, HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom,
+  HorizontalPositionAlign, VerticalPositionAlign, PageNumber, NumberFormat
+} = docx;
+
+// ─── DAY PALETTES ─────────────────────────────────────
+const DAY_PALETTES = [
+  { main:'2C3E50', accent:'C0392B' },
+  { main:'1565C0', accent:'FB8C00' },
+  { main:'2E7D32', accent:'D84315' },
+  { main:'6A1B9A', accent:'C62828' },
+  { main:'E65100', accent:'AD1457' },
+  { main:'C62828', accent:'1565C0' },
+  { main:'00695C', accent:'6A1B9A' }
+];
+
+// ─── TEMPLATE MODE ────────────────────────────────────
+let tplMode = 'default';
+function setTplMode(m) {
+  tplMode = m;
+  document.getElementById('btnDefault').classList.toggle('active', m==='default');
+  document.getElementById('btnMine').classList.toggle('active', m==='mine');
+  document.getElementById('tplHint').textContent = m==='default'
+    ? 'Using built-in default template'
+    : 'Using your saved template (fallback to default if not set)';
+}
+
+// ─── SETTINGS MODAL ───────────────────────────────────
+const GROUPS = ['abd','ep','nt','anomaly','growth','small','doppler'];
+function openSettings() {
+  GROUPS.forEach(g => {
+    const val = localStorage.getItem('drlgk_tpl_v6_'+g) || '';
+    document.getElementById('ta-'+g).value = val;
+  });
+  document.getElementById('settingsModal').classList.add('open');
+}
+function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
+function switchTab(g) {
+  GROUPS.forEach(x => {
+    document.getElementById('tg-'+x).classList.toggle('active', x===g);
+  });
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', GROUPS[i]===g));
+}
+function saveTpl(g) {
+  localStorage.setItem('drlgk_tpl_v6_'+g, document.getElementById('ta-'+g).value);
+  const msg = document.getElementById('sm-'+g);
+  msg.style.display = 'inline';
+  setTimeout(()=>{ msg.style.display='none'; }, 1500);
+}
+function clearTpl(g) {
+  if (!confirm('Clear your '+g.toUpperCase()+' template?')) return;
+  localStorage.removeItem('drlgk_tpl_v6_'+g);
+  document.getElementById('ta-'+g).value = '';
+}
+
+// ─── TRACKER ──────────────────────────────────────────
+const today = new Date();
+const todayStr = `${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+let trackerData = JSON.parse(localStorage.getItem('drlgk_ext_v6') || '{"date":"","patients":[]}');
+if (trackerData.date !== todayStr) { trackerData = {date:todayStr,patients:[]}; saveTracker(); }
+document.getElementById('trackerDate').textContent = todayStr;
+document.getElementById('reportCounter').textContent = trackerData.patients.length;
+updateTrackerUI();
+
+let processedSerials = JSON.parse(localStorage.getItem('drlgk_serials_v6') || '{"date":"","serials":[]}');
+if (processedSerials.date !== todayStr) { processedSerials = {date:todayStr,serials:[]}; localStorage.setItem('drlgk_serials_v6', JSON.stringify(processedSerials)); }
+
+let pendingFields = null;
+
+function saveTracker() { try { localStorage.setItem('drlgk_ext_v6', JSON.stringify(trackerData)); } catch(e){} }
+function updateTrackerUI() {
+  const p = trackerData.patients;
+  let cash=0,upi=0,paid=0,pending=0;
+  p.forEach(x => {
+    const m=(x.method||'').toLowerCase();
+    if(m.includes('cash')) cash+=(x.paid||0);
+    if(m.includes('upi')) upi+=(x.paid||0);
+    paid+=(x.paid||0); pending+=(x.pending||0);
+  });
+  document.getElementById('tTotal').textContent = p.length;
+  document.getElementById('tCash').textContent = '₹'+cash.toLocaleString('en-IN');
+  document.getElementById('tUPI').textContent = '₹'+upi.toLocaleString('en-IN');
+  document.getElementById('tCollected').textContent = '₹'+paid.toLocaleString('en-IN');
+  document.getElementById('tPending').textContent = '₹'+pending.toLocaleString('en-IN');
+  document.getElementById('logCount').textContent = p.length;
+  document.getElementById('reportCounter').textContent = p.length;
+  const tb = document.getElementById('logBody'); tb.innerHTML='';
+  p.forEach((x,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td>${i+1}</td><td style="font-weight:700;color:#c62828;">T-${x.token||'?'}</td><td>${x.time||''}</td><td>${x.name||''}</td><td>${x.scan||''}</td><td>₹${(x.paid||0).toLocaleString('en-IN')}</td><td>${x.method||''}</td>`;
+    tb.appendChild(tr);
+  });
+}
+function resetTracker() {
+  if (prompt('Enter security code:')!=='2277612') { alert('Invalid code'); return; }
+  if (!confirm('Reset all data for today?')) return;
+  trackerData={date:todayStr,patients:[]}; saveTracker();
+  processedSerials={date:todayStr,serials:[]}; localStorage.setItem('drlgk_serials_v6',JSON.stringify(processedSerials));
+  updateTrackerUI();
+}
+function exportCSV() {
+  let csv='No,Token,Time,Patient,Phone,Scan,Payable,Paid,Pending,Method\n';
+  trackerData.patients.forEach((x,i)=>{ csv+=`${i+1},T-${x.token||'?'},"${x.time}","${x.name}","${x.phone||''}","${x.scan}",${x.payable},${x.paid},${x.pending},"${x.method}"\n`; });
+  saveAs(new Blob([csv],{type:'text/csv'}),`DrlgkReport_${todayStr.replace(/\//g,'')}.csv`);
+}
+
+function setStatus(msg,cls) { const el=document.getElementById('status'); el.textContent=msg; el.className=cls; }
+
+function copyPhone(phone) {
+  navigator.clipboard.writeText(phone).catch(()=>{
+    const ta=document.createElement('textarea'); ta.value=phone; ta.style.cssText='position:fixed;opacity:0;';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+  });
+  alert('Copied: '+phone);
+}
+
+// ─── CANVAS HELPERS ───────────────────────────────────
+function canvasToUint8(canvas) {
+  const d=canvas.toDataURL('image/png').split(',')[1];
+  const b=atob(d); const u=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i); return u;
+}
+
+function renderQR(text, canvasId, color) {
+  return new Promise(resolve => {
+    const c = document.getElementById(canvasId);
+    c.width=200; c.height=200;
+    const ctx=c.getContext('2d'); ctx.clearRect(0,0,200,200);
+    const tempDiv=document.createElement('div');
+    tempDiv.style.cssText='position:absolute;left:-9999px;top:-9999px;width:180px;height:180px;';
+    document.body.appendChild(tempDiv);
+    try {
+      new QRCode(tempDiv, {
+        text, width:180, height:180,
+        colorDark: color || '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } catch(e){}
+    setTimeout(()=>{
+      const qrC=tempDiv.querySelector('canvas');
+      if(qrC) { ctx.fillStyle='#FFF'; ctx.fillRect(0,0,200,200); ctx.drawImage(qrC,10,10,180,180); }
+      document.body.removeChild(tempDiv);
+      resolve(canvasToUint8(c));
+    }, 400);
+  });
+}
+
+function renderWatermark(patientName) {
+  const c=document.getElementById('watermarkCanvas');
+  const W=1240,H=1754; c.width=W; c.height=H;
+  const ctx=c.getContext('2d'); ctx.clearRect(0,0,W,H);
+  const name=(patientName||'PATIENT').toUpperCase();
+  const stamp=name+'  •  ';
+  ctx.font='12px Arial,sans-serif'; ctx.fillStyle='rgba(160,160,160,0.06)';
+  const rowSp=28, wA=6, wF=0.015;
+  for(let row=0;row<Math.ceil(H/rowSp)+2;row++){
+    const baseY=row*rowSp+8; ctx.save(); ctx.translate(0,baseY);
+    ctx.rotate((row%2===0)?0.015:-0.015);
+    let x=-40+(row%3)*35;
+    const ft=stamp.repeat(Math.ceil((W+200)/(stamp.length*6.5)));
+    for(let ch=0;ch<ft.length&&x<W+100;ch++){ ctx.fillText(ft[ch],x,Math.sin((x+row*45)*wF)*wA); x+=ctx.measureText(ft[ch]).width; }
+    ctx.restore();
+  }
+  return canvasToUint8(c);
+}
+
+// ─── SCAN GROUP DETECTION ─────────────────────────────
+function getScanGroup(scanCode) {
+  const c=(scanCode||'').toUpperCase().replace(/[\s\[\]]/g,'');
+  if(['ABD','PEL','AP','KUB'].some(x=>c===x||c.startsWith(x))) return 'ABD';
+  if(['EP','FS','FOL','FO'].some(x=>c===x)) return 'EP';
+  if(c==='NT') return 'NT';
+  if(['AS','AN','ANE','AE','FE','FN','ECHO'].some(x=>c===x||c.startsWith(x))) return 'ANOMALY';
+  if(['GS','GR','GD'].some(x=>c===x||c.startsWith(x))) return 'GROWTH';
+  if(['NK','BR1','BR2','SCR','MSK','EYE','CHT','CHE','CH'].some(x=>c===x||c.startsWith(x))) return 'SMALL';
+  if(['ADS','VDS','ADB','VDB','AVS','ADA','AVB','CVD','RAD','PVD','PND','PEN'].some(x=>c===x)) return 'DOPPLER';
+  return 'GENERIC';
+}
+
+function isPregnancy(group) { return ['EP','NT','ANOMALY','GROWTH'].includes(group); }
+
+// ─── PDF PROCESSING ───────────────────────────────────
+async function processPDF() {
+  const fi=document.getElementById('pdfInput');
+  if(!fi.files.length) { setStatus('Please select a PDF file.','err'); return; }
+  setStatus('Extracting data from PDF...','info');
+  document.getElementById('tokenPanel').style.display='none';
+  document.getElementById('confirmPanel').style.display='none';
+  try {
+    const buf=await fi.files[0].arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let fullText='';
+    for(let i=1;i<=pdf.numPages;i++){
+      const pg=await pdf.getPage(i);
+      const tc=await pg.getTextContent();
+      fullText+=tc.items.map(it=>it.str).join('\n')+'\n';
+    }
+    const dm=fullText.match(/##DATA##(.+?)##END##/);
+    window._lastFullText = fullText;
+  let fields={};
+    if(dm){
+      const p=dm[1].split('|');
+      fields={
+        patientName:p[0]||'N/A', age:p[1]||'N/A', sex:p[2]||'N/A',
+        phone:p[3]||'N/A', address:p[4]||'N/A', referralDoctor:p[5]||'N/A',
+        pregnancy:p[6]||'No', lmp:p[7]||'', edd:p[8]||'',
+        scanCode:p[9]||'', scanType:p[10]||'General Study',
+        scanPrice:parseFloat(p[11])||0, advance:parseFloat(p[12])||0,
+        amountPaid:parseFloat(p[13])||0, additional:parseFloat(p[14])||0,
+        discount:parseFloat(p[15])||0, totalPayable:parseFloat(p[16])||0,
+        netPaid:parseFloat(p[17])||0, pending:parseFloat(p[18])||0,
+        serial:p[19]||'', dateTime:p[20]||'', paymentMethod:p[21]||'Cash',
+        token:p[22]||''
+      };
+    } else { fields=parseFallback(fullText); }
+
+    let warnings=[];
+    if(!fields.patientName||fields.patientName==='N/A') warnings.push('Patient name missing');
+    if(fields.phone&&fields.phone!=='N/A'&&!/^\d{10}$/.test(fields.phone)) warnings.push('Phone not 10 digits: '+fields.phone);
+    if(!fields.scanType||fields.scanType==='General Study') warnings.push('Scan type may be wrong');
+    let isDuplicate=false;
+    if(fields.serial&&processedSerials.serials.includes(fields.serial)){ isDuplicate=true; warnings.push('⚠️ DUPLICATE — already processed today!'); }
+
+    pendingFields=fields;
+    showConfirmPanel(fields,warnings,isDuplicate);
+  } catch(e){ console.error(e); setStatus('Error: '+e.message,'err'); }
+}
+
+function parseFallback(text) {
+  const lines=text.split('\n').map(l=>l.trim()).filter(l=>l);
+  const f={patientName:'N/A',age:'N/A',sex:'N/A',phone:'N/A',address:'N/A',referralDoctor:'N/A',pregnancy:'No',lmp:'',edd:'',scanCode:'',scanType:'General Study',scanPrice:0,advance:0,amountPaid:0,additional:0,discount:0,totalPayable:0,netPaid:0,pending:0,serial:'',dateTime:'',paymentMethod:'Cash',token:''};
+  for(let i=0;i<lines.length;i++){
+    const ln=lines[i];
+    if(ln.startsWith('Patient Name:')) f.patientName=ln.replace('Patient Name:','').trim();
+    else if(ln.startsWith('Age:')) f.age=ln.replace('Age:','').trim();
+    else if(ln.startsWith('Sex:')) f.sex=ln.replace('Sex:','').trim();
+    else if(ln.startsWith('Phone:')) f.phone=ln.replace('Phone:','').trim();
+    else if(ln.startsWith('Referral Doctor:')) f.referralDoctor=ln.replace('Referral Doctor:','').trim();
+    else if(ln.startsWith('Scan Type:')){ const st=ln.replace('Scan Type:','').trim(); const cm=st.match(/\[(\w+)\]$/); if(cm){f.scanCode=cm[1];f.scanType=st.replace(/\s*\[\w+\]$/,'').trim();}else f.scanType=st; }
+    else if(ln.startsWith('Net Paid:')) f.netPaid=parseFloat(ln.replace(/[^\d.]/g,''))||0;
+    else if(ln.startsWith('Pending:')) f.pending=parseFloat(ln.replace(/[^\d.]/g,''))||0;
+    else if(ln.startsWith('Total Payable:')) f.totalPayable=parseFloat(ln.replace(/[^\d.]/g,''))||0;
+    else if(/^DSN\d/.test(ln)) f.serial=ln;
+    else if(/^\d{2}\/\d{2}\/\d{4}/.test(ln)) f.dateTime=ln;
+    else if(ln==='Cash'||ln==='UPI'||ln==='Cash + UPI') f.paymentMethod=ln;
+  }
+  return f;
+}
+
+function showConfirmPanel(fields,warnings,isDuplicate) {
+  const grid=document.getElementById('confirmGrid');
+  const tokenLabel=fields.token?`T-${fields.token}`:'N/A';
+  let html=`
+    <span class="lbl">Token:</span><span class="val" style="font-size:16px;color:#c62828;font-weight:900;">${tokenLabel}</span>
+    <span class="lbl">Patient:</span><span class="val">${fields.patientName}</span>
+    <span class="lbl">Age/Sex:</span><span class="val">${fields.age} / ${fields.sex}</span>
+    <span class="lbl">Phone:</span><span class="val">${fields.phone}</span>
+    <span class="lbl">Doctor:</span><span class="val">${fields.referralDoctor}</span>
+    <span class="lbl">Scan:</span><span class="val">${fields.scanType} [${fields.scanCode}]</span>
+    <span class="lbl">Serial:</span><span class="val">${fields.serial}</span>
+    <span class="lbl">Paid:</span><span class="val">₹${fields.netPaid.toLocaleString('en-IN')} (${fields.paymentMethod})</span>
+    <span class="lbl">Template:</span><span class="val">${tplMode==='mine'?'👤 My Format':'⚕ Default'}</span>`;
+  if(warnings.length>0) html+=`<span class="lbl" style="color:#e53935;">Warnings:</span><span class="val warn">${warnings.join('<br>')}</span>`;
+  grid.innerHTML=html;
+  document.getElementById('confirmPanel').style.borderColor=isDuplicate?'#e53935':'#ff9800';
+  document.getElementById('confirmPanel').style.display='block';
+  setStatus(warnings.length>0?`⚠️ ${warnings.length} warning(s) — review before generating`:'✅ Data extracted — confirm to generate report', warnings.length>0?'warn':'ok');
+}
+
+function cancelGenerate() { document.getElementById('confirmPanel').style.display='none'; pendingFields=null; setStatus('Cancelled.','info'); }
+
+async function confirmGenerate() {
+  if(!pendingFields) return;
+  const fields=pendingFields; pendingFields=null;
+  document.getElementById('confirmPanel').style.display='none';
+  setStatus('Generating Word report...','info');
+  try {
+    await generateWordReport(fields);
+    if(fields.serial){ processedSerials.serials.push(fields.serial); localStorage.setItem('drlgk_serials_v6',JSON.stringify(processedSerials)); }
+    const now=new Date();
+    trackerData.patients.push({
+      time:now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}),
+      name:fields.patientName, phone:fields.phone,
+      scan:`${fields.scanType} [${fields.scanCode}]`, token:fields.token||'?',
+      payable:fields.totalPayable, paid:fields.netPaid, pending:fields.pending, method:fields.paymentMethod
+    });
+    saveTracker(); updateTrackerUI();
+    if(trackerData.patients.length%5===0){ try{ exportCSV(); }catch(e){} }
+    showTokenPanel(fields);
+  } catch(e){ console.error(e); setStatus('Error: '+e.message,'err'); }
+}
+
+// ─── TOKEN + COMMS PANEL ──────────────────────────────
+function showTokenPanel(fields) {
+  const panel=document.getElementById('tokenPanel');
+  document.getElementById('tokenDisplay').textContent=`T-${fields.token||'?'}`;
+  document.getElementById('tokenPatient').textContent=fields.patientName;
+  document.getElementById('tokenScan').textContent=`${fields.scanType} [${fields.scanCode}]`;
+  const phone=fields.phone;
+  const hasPhone=phone&&phone!=='N/A'&&/^\d{10}$/.test(phone);
+  const enMsg=`Your token is T-${fields.token}. Please come to the scan room. — Dr. L.G. Krishna Ultrasound Clinic, Sirsi`;
+  const knMsg=`ನಿಮ್ಮ ಟೋಕನ್ T-${fields.token}. ದಯವಿಟ್ಟು ಸ್ಕ್ಯಾನ್ ರೂಮ್‌ಗೆ ಬನ್ನಿ. — ಡಾ. ಎಲ್.ಜಿ. ಕೃಷ್ಣ ಅಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ಸಿರ್ಸಿ`;
+  const actions=document.getElementById('tokenActions');
+  // Add mark done button
+  const doneBtn=document.createElement('button');
+  doneBtn.textContent='Mark Report Done';
+  doneBtn.style.cssText='padding:8px 16px;background:#1A7A5E;color:#fff;border:none;border-radius:7px;font-weight:700;font-size:12px;cursor:pointer';
+  doneBtn.onclick=()=>{ markReportDone(fields.token); doneBtn.textContent='Done!'; doneBtn.disabled=true; };
+  let html='';
+  if(hasPhone){
+    html+=`<a href="tel:+91${phone}" class="btn-call"><i class="fas fa-phone"></i> Call</a>`;
+    html+=`<button onclick="copyPhone('${phone}')" class="btn-call" style="background:#455a64;cursor:pointer;border:none;"><i class="fas fa-copy"></i> Copy ${phone}</button>`;
+    html+=`<a href="https://wa.me/91${phone}?text=${encodeURIComponent(enMsg)}" target="_blank" class="btn-wa"><i class="fab fa-whatsapp"></i> WhatsApp (EN)</a>`;
+    html+=`<a href="https://wa.me/91${phone}?text=${encodeURIComponent(knMsg)}" target="_blank" class="btn-wa btn-wa-kn"><i class="fab fa-whatsapp"></i> WhatsApp (ಕನ್ನಡ)</a>`;
+  } else { html=`<span style="color:#999;font-size:12px;">No valid phone number</span>`; }
+  actions.innerHTML=html;
+
+  // Form F button — pregnancy scans only
+  const PREG_CODES = ['EP','NT','GS','AS','FE','AE','GD','FS','FN'];
+  if(PREG_CODES.includes(fields.scanCode)) {
+    const ffBtn = document.createElement('button');
+    ffBtn.innerHTML = '📋 Complete PCPNDT Form F';
+    ffBtn.style.cssText = 'margin-top:10px;width:100%;padding:10px 16px;background:#1A7A5E;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;';
+    ffBtn.onclick = () => openFormF(fields, window._lastFullText||'');
+    actions.appendChild(document.createElement('br'));
+    actions.appendChild(ffBtn);
+  }
+
+  actions.appendChild(document.createElement('br'));
+  actions.appendChild(doneBtn);
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+function openFormF(fields, fullText) {
+  // Extract ##FORMF## line from PDF text
+  const ffMatch = (fullText||'').match(/##FORMF##(.+?)##FORMFEND##/s);
+  if(ffMatch) {
+    localStorage.setItem('lgk_formf_data', '##FORMF##' + ffMatch[1] + '##FORMFEND##');
+  } else {
+    // Build minimal FORMF from ##DATA## fields for older bills
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2,'0');
+    const mm = String(today.getMonth()+1).padStart(2,'0');
+    const yyyy = today.getFullYear();
+    const scandate = `${dd}/${mm}/${yyyy}`;
+    const lmp = fields.lmp ? fields.lmp.replace(/-/g,'/').split('/').reverse().join('/') : '';
+    const minimal = `##FORMF##${fields.patientName}|${fields.age}|${fields.sex}|${fields.phone}|${fields.address}|${fields.referralDoctor}|${lmp}||${fields.scanCode}|${fields.scanType}|${fields.dateTime}|||0||0||68||||||2|0||${fields.serial}##FORMFEND##`;
+    localStorage.setItem('lgk_formf_data', minimal);
+  }
+  window.open('../apps/niyama.html', '_blank');
+}
+
+// ─── WORD DOCUMENT GENERATION ────────────────────────
+// Opaque reference code — consistent for same serial, hides T-number
+function makeRefCode(serial, token) {
+  const s = String(serial||'') + String(token||'');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+  return 'LGK-' + Math.abs(h).toString(36).toUpperCase().slice(0, 5);
+}
+async function generateWordReport(fields) {
+  // Determine palette from bill date
+  let dayIdx=new Date().getDay();
+  if(fields.dateTime){ const dp=fields.dateTime.split(' ')[0]; if(dp){ const pts=dp.split('/'); if(pts.length===3){ const d=new Date(parseInt(pts[2]),parseInt(pts[1])-1,parseInt(pts[0])); if(!isNaN(d.getTime())) dayIdx=d.getDay(); } } }
+  const pal=DAY_PALETTES[dayIdx];
+
+  let scanDate=todayStr;
+  if(fields.dateTime){ const dt=fields.dateTime.split(' '); if(dt[0]) scanDate=dt[0]; }
+  const scanDateClean=scanDate.replace(/,\s*$/,'');
+
+  // Generate QR images
+  const bookingUrl='https://drlgkscan.github.io/lgk-booking/booking.html';
+  const billText=[
+    'Dr L G Krishna USG Clinic',
+    `Patient: ${fields.patientName}`,
+    `Ref: ${makeRefCode(fields.serial,fields.token)}`,
+    `Scan: ${fields.scanType}`,
+    `Date: ${scanDateClean}`
+  ].join('\n');
+
+  const [bookingQr, billQr] = await Promise.all([
+    renderQR(bookingUrl, 'qr1Canvas', '#000000'),
+    renderQR(billText, 'qr2Canvas', '#'+pal.main)
+  ]);
+
+  // ─── BORDER CONSTANTS ───
+  const NB={style:BorderStyle.NONE,size:0,color:'FFFFFF'};
+  const TB={style:BorderStyle.SINGLE,size:4,color:'000000'};
+  const LB={style:BorderStyle.SINGLE,size:3,color:'AAAAAA'};
+  const PB={style:BorderStyle.SINGLE,size:3,color:pal.main};
+  const NO_BDR={top:NB,bottom:NB,left:NB,right:NB};
+  const ALL_LB={top:LB,bottom:LB,left:LB,right:LB};
+  const CM={top:30,bottom:30,left:80,right:80};
+  const CM_T={top:20,bottom:20,left:60,right:60};
+
+  // ─── HELPER FUNCTIONS ───
+  function secHdr(text) {
+    return new Paragraph({
+      spacing:{before:80,after:20,line:264},
+      children:[new TextRun({text:text.toUpperCase(),bold:true,size:24,font:'Calibri',color:'111111'})]
+    });
+  }
+  function subHdr(text) {
+    return new Paragraph({
+      spacing:{before:80,after:20,line:276},
+      children:[new TextRun({text,bold:true,size:24,font:'Calibri'})]
+    });
+  }
+  function emptyLine() {
+    return new Paragraph({spacing:{before:0,after:0,line:276},children:[new TextRun({text:'',size:24,font:'Calibri'})]});
+  }
+  function italicNote(text) {
+    return new Paragraph({
+      spacing:{before:0,after:30,line:240},
+      children:[new TextRun({text,italics:true,size:18,font:'Calibri',color:'888888'})]
+    });
+  }
+  function impLine() {
+    return new Paragraph({
+      spacing:{before:100,after:40},
+      border:{top:{style:BorderStyle.SINGLE,size:6,color:'333333'}},
+      children:[new TextRun({text:'',size:24})]
+    });
+  }
+  function pcpndtPara() {
+    return new Paragraph({
+      spacing:{before:80,after:0,line:240},
+      border:{top:{style:BorderStyle.DASHED,size:3,color:'AAAAAA'}},
+      children:[new TextRun({text:'ಲಿಂಗ ಪರೀಕ್ಷೆ ಮಾಡಲಾಗಿಲ್ಲ ಮತ್ತು ತಿಳಿಸಲಾಗಿಲ್ಲ. Sex of the foetus has neither been determined nor disclosed. This examination is carried out under the PCPNDT Act.',italics:true,size:17,font:'Calibri',color:'555555'})]
+    });
+  }
+
+  // ─── TABLE HELPERS ───
+  function makeDataCell(text, isLabel, widthPct, shade) {
+    const opts={
+      width:{size:widthPct,type:WidthType.PERCENTAGE},
+      borders:ALL_LB, margins:CM_T,
+      children:[new Paragraph({spacing:{before:0,after:0,line:240},children:[new TextRun({text:text||'',bold:isLabel,size:isLabel?19:24,font:'Calibri',color:isLabel?'444444':'111111'})]})]
+    };
+    if(shade) opts.shading={fill:'FAFAFA',type:ShadingType.CLEAR};
+    return new TableCell(opts);
+  }
+
+  // 4-column paired table: [[lbl1,val1,lbl2,val2], ...]
+  function paired4(rows) {
+    return new Table({
+      width:{size:100,type:WidthType.PERCENTAGE},
+      borders:{top:NB,bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
+      rows:rows.map(r=>new TableRow({children:[
+        makeDataCell(r[0],true,22,true),
+        makeDataCell(r[1],false,28),
+        makeDataCell(r[2],true,22,true),
+        makeDataCell(r[3],false,28),
+      ]}))
+    });
+  }
+
+  // Single wide row table (for GA, placenta)
+  function wideRow(cells) {
+    // cells = [{label, pct}, {val, pct}, ...]
+    const tCells=cells.map(c=>{
+      const isLbl=c.label!==undefined;
+      return new TableCell({
+        width:{size:c.pct,type:WidthType.PERCENTAGE},
+        borders:ALL_LB, margins:CM_T,
+        children:[new Paragraph({spacing:{before:0,after:0,line:240},children:[new TextRun({text:isLbl?(c.label||''):(c.val||''),bold:isLbl,size:isLbl?19:24,font:'Calibri',color:isLbl?'444444':'111111'})]})]
+      });
+    });
+    return new Table({
+      width:{size:100,type:WidthType.PERCENTAGE},
+      borders:{top:NB,bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
+      rows:[new TableRow({children:tCells})]
+    });
+  }
+
+  // GA table: single row
+  function gaTable() {
+    return wideRow([
+      {label:'LMP GA',pct:9},{val:'',pct:11},
+      {label:'LMP EDD',pct:10},{val:'',pct:12},
+      {label:'USG GA',pct:9},{val:'',pct:11},
+      {label:'USG EDD',pct:10},{val:'',pct:12},
+      {label:'Concordance',pct:12},{val:'',pct:14}
+    ]);
+  }
+
+  // GA table with CRL
+  function gaTableCRL() {
+    return wideRow([
+      {label:'LMP GA',pct:9},{val:'',pct:11},
+      {label:'LMP EDD',pct:9},{val:'',pct:11},
+      {label:'CRL GA',pct:9},{val:'',pct:11},
+      {label:'CRL EDD',pct:9},{val:'',pct:11},
+      {label:'CRL',pct:8},{val:'mm',pct:8},
+      {label:'Concordance',pct:10},{val:'',pct:14}
+    ]);
+  }
+
+  // Placenta row
+  function placentaRow() {
+    return wideRow([
+      {label:'Placenta',pct:9},{val:'',pct:13},
+      {label:'Segment',pct:9},{val:'Upper / Lower',pct:13},
+      {label:'Low Lying',pct:9},{val:'Yes / No',pct:11},
+      {label:'Praevia',pct:9},{val:'None / Marginal / Partial / Complete',pct:13},
+      {label:'Grade',pct:7},{val:'',pct:7}
+    ]);
+  }
+
+  // Doppler table - RI, PI, interpretation
+  function dopplerTable() {
+    const hdrRow=new TableRow({children:[
+      new TableCell({width:{size:35,type:WidthType.PERCENTAGE},borders:ALL_LB,margins:CM_T,shading:{fill:'F0F0F0',type:ShadingType.CLEAR},children:[new Paragraph({spacing:{before:0,after:0},children:[new TextRun({text:'Vessel',bold:true,size:19,font:'Calibri',color:'2E7D32'})]})]}),
+      new TableCell({width:{size:15,type:WidthType.PERCENTAGE},borders:ALL_LB,margins:CM_T,shading:{fill:'F0F0F0',type:ShadingType.CLEAR},children:[new Paragraph({spacing:{before:0,after:0},children:[new TextRun({text:'RI',bold:true,size:19,font:'Calibri',color:'2E7D32'})]})]}),
+      new TableCell({width:{size:15,type:WidthType.PERCENTAGE},borders:ALL_LB,margins:CM_T,shading:{fill:'F0F0F0',type:ShadingType.CLEAR},children:[new Paragraph({spacing:{before:0,after:0},children:[new TextRun({text:'PI',bold:true,size:19,font:'Calibri',color:'2E7D32'})]})]}),
+      new TableCell({width:{size:35,type:WidthType.PERCENTAGE},borders:ALL_LB,margins:CM_T,shading:{fill:'F0F0F0',type:ShadingType.CLEAR},children:[new Paragraph({spacing:{before:0,after:0},children:[new TextRun({text:'Interpretation',bold:true,size:19,font:'Calibri',color:'2E7D32'})]})]}),
+    ]});
+    const dataRow=new TableRow({children:[
+      makeDataCell('Both Uterine Arteries',false,35),
+      makeDataCell('',false,15), makeDataCell('',false,15),
+      makeDataCell('Normal / Abnormal',false,35),
+    ]});
+    return new Table({width:{size:100,type:WidthType.PERCENTAGE},borders:{top:NB,bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},rows:[hdrRow,dataRow]});
+  }
+
+  // ─── BODY TEMPLATE BUILDERS ───────────────────────
+  const group=getScanGroup(fields.scanCode);
+  const useMyTpl=tplMode==='mine';
+  const myTplText=useMyTpl?(localStorage.getItem('drlgk_tpl_v6_'+group.toLowerCase())||''):'';
+
+  let bodyElements=[];
+
+  if(useMyTpl&&myTplText.trim()) {
+    bodyElements=buildMyTemplate(myTplText, isPregnancy(group));
+  } else {
+    switch(group) {
+      case 'ABD':    bodyElements=buildABD(fields,secHdr,subHdr,paired4,emptyLine,impLine); break;
+      case 'EP':     bodyElements=buildEP(fields,secHdr,subHdr,paired4,emptyLine,impLine,gaTableCRL,pcpndtPara); break;
+      case 'NT':     bodyElements=buildNT(fields,secHdr,subHdr,paired4,emptyLine,impLine,gaTableCRL,pcpndtPara); break;
+      case 'ANOMALY':bodyElements=buildAnomaly(fields,secHdr,subHdr,paired4,emptyLine,impLine,gaTable,placentaRow,pcpndtPara,italicNote); break;
+      case 'GROWTH': bodyElements=buildGrowth(fields,secHdr,subHdr,paired4,emptyLine,impLine,gaTable,placentaRow,dopplerTable,pcpndtPara,italicNote); break;
+      case 'SMALL':  bodyElements=buildSmall(fields,secHdr,subHdr,emptyLine,impLine); break;
+      case 'DOPPLER':bodyElements=buildDoppler(fields,secHdr,subHdr,emptyLine,impLine,dopplerTable); break;
+      default:       bodyElements=buildGeneric(secHdr,subHdr,emptyLine,impLine);
+    }
+  }
+
+  // ─── DRAFT TEMPLATE RIBBON — flag for templates that need fixing ───
+  // Stored in localStorage; admin can toggle. To mark a template as draft:
+  //   localStorage.setItem('drlgk_draft_'+groupName, '1')
+  // To unmark: remove that key.
+  const isDraft = !useMyTpl && localStorage.getItem('drlgk_draft_'+group.toLowerCase()) === '1';
+  if (isDraft) {
+    const ribbon = new Paragraph({
+      spacing:{before:0,after:60,line:240},
+      shading:{type:ShadingType.CLEAR, fill:'FFF7E0'},
+      border:{
+        top:{style:BorderStyle.SINGLE,size:6,color:'E8A020'},
+        bottom:{style:BorderStyle.SINGLE,size:6,color:'E8A020'},
+        left:{style:BorderStyle.SINGLE,size:6,color:'E8A020'},
+        right:{style:BorderStyle.SINGLE,size:6,color:'E8A020'}
+      },
+      children:[
+        new TextRun({text:'⚠ DRAFT TEMPLATE — ',bold:true,size:18,font:'Calibri',color:'9A6500'}),
+        new TextRun({text:'this report uses a template that is being revised by the doctor. Final clinical findings remain valid.',size:18,font:'Calibri',color:'9A6500',italics:true})
+      ]
+    });
+    bodyElements = [ribbon, emptyLine(), ...bodyElements];
+  }
+
+  // ─── SECURITY THREAD TEXT — computed first, used in headerTable ───
+  const SELF_REFS=['self','others','self/others','','n/a','na'];
+  const refDoc=fields.referralDoctor||'';
+  const isSelf=SELF_REFS.includes(refDoc.toLowerCase().trim());
+  const scanTime=fields.dateTime?(fields.dateTime.split(' ')[1]||''):'';
+  const threadChars={ABD:'◈',EP:'❀',NT:'❀',ANOMALY:'❀',GROWTH:'❀',SMALL:'✦',DOPPLER:'∿',GENERIC:'⁙'};
+  const tc=threadChars[group]||'⁙';
+  const fill='∿∿⚕∿∿◈∿∿◉∿∿⚕∿∿◎∿∿⚛∿∿⚕∿∿◈∿∿';
+  const pad=`${tc}·${tc}·${tc}·`;
+  // Build core content first, then pad to exactly 110 chars (safe single line for 72% A4 at 6pt Courier)
+  let core;
+  if(isSelf){
+    const flood=`${tc}·${tc}·∿∿⚕∿∿·${tc}·${tc}·◈·${tc}·${tc}·⚛·${tc}·${tc}·◉·${tc}·${tc}·∿∿⚕∿∿·${tc}·${tc}·◎·${tc}·${tc}·⚕·${tc}·${tc}`;
+    core=`${pad}${scanTime?scanTime+' · ':''}Dr Satish B ·${flood}`;
+  } else {
+    core=`${pad}${scanTime?scanTime+' · ':''}Dr Satish B ·${fill}· Dr ${refDoc} ·`;
+  }
+  // Pad with repeating tc pattern to fill exactly 90 chars, then hard stop
+  const TARGET=90;
+  const repeat=`${tc}·`;
+  let threadText=core;
+  while(threadText.length<TARGET) threadText+=repeat;
+  threadText=threadText.substring(0,TARGET);
+
+  // ─── HEADER TABLE ───
+  const headerTable=new Table({
+    width:{size:100,type:WidthType.PERCENTAGE},
+    borders:{top:NB,bottom:{style:BorderStyle.THICK,size:12,color:'111111'},left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
+    rows:[new TableRow({children:[
+      // Left: clinic name + thread strip
+      new TableCell({borders:NO_BDR,width:{size:72,type:WidthType.PERCENTAGE},margins:{top:40,bottom:0,left:0,right:0},children:[
+        new Paragraph({spacing:{before:0,after:0,line:240},children:[
+          new TextRun({text:'ಡಾ. ಎಲ್ ಜಿ ಕೃಷ್ಣ ಆಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ',font:'Tunga',size:28,color:pal.main}),
+          new TextRun({text:'ಸಿರ್ಸಿ',font:'Tunga',size:28,color:pal.accent})
+        ]}),
+        new Paragraph({spacing:{before:0,after:0,line:240},children:[
+          new TextRun({text:'Dr L G Krishna Ultrasound Clinic, ',font:'Colonna MT',size:48,bold:true,color:'111111'}),
+          new TextRun({text:'Sirsi',font:'Colonna MT',size:48,bold:true,color:pal.accent})
+        ]}),
+        new Paragraph({
+          spacing:{before:20,after:0,line:220},
+          border:{top:{style:BorderStyle.SINGLE,size:3,color:pal.main},bottom:{style:BorderStyle.SINGLE,size:3,color:pal.main}},
+          children:[new TextRun({text:threadText,size:12,font:'Courier New',color:pal.main})]
+        })
+      ]}),
+      // Right: nested 2-col table — each QR + label in its own column
+      new TableCell({borders:NO_BDR,width:{size:28,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.TOP,margins:{top:20,bottom:0,left:10,right:0},children:[
+        new Table({
+          width:{size:100,type:WidthType.PERCENTAGE},
+          borders:{top:NB,bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
+          rows:[new TableRow({children:[
+            new TableCell({borders:NO_BDR,width:{size:50,type:WidthType.PERCENTAGE},margins:{top:0,bottom:0,left:0,right:2},children:[
+              new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:4},children:[new ImageRun({data:bookingQr,transformation:{width:64,height:64},type:'png'})]}),
+              new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Book Appt',font:'Calibri',size:13,color:'777777',italics:true})]})
+            ]}),
+            new TableCell({borders:NO_BDR,width:{size:50,type:WidthType.PERCENTAGE},margins:{top:0,bottom:0,left:2,right:0},children:[
+              new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:4},children:[new ImageRun({data:billQr,transformation:{width:64,height:64},type:'png'})]}),
+              new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Bill Details',font:'Calibri',size:13,color:'777777',italics:true})]})
+            ]})
+          ]})]
+        })
+      ]})
+    ]})]
+  });
+
+  // Thin accent line below header
+  const accentLine=new Paragraph({
+    spacing:{before:30,after:60},
+    border:{bottom:{style:BorderStyle.SINGLE,size:4,color:pal.accent}},
+    children:[new TextRun({text:'',size:8})]
+  });
+
+  // ─── DEMOGRAPHICS TABLE ───
+  const dCell=(lbl,val,shade)=>new TableCell({
+    borders:{top:TB,bottom:TB,left:TB,right:TB},
+    margins:CM, shading:shade?{fill:'F2F2F2',type:ShadingType.CLEAR}:undefined,
+    children:[new Paragraph({spacing:{before:0,after:0},children:[
+      new TextRun({text:lbl,bold:true,size:22,font:'Calibri'}),
+      new TextRun({text:val,bold:true,size:22,font:'Calibri',color:'1a237e'})
+    ]})]
+  });
+
+  const dCellWide=(lbl,val,lbl2,val2)=>{
+    const addr=fields.address&&fields.address!=='N/A'?fields.address:'';
+    const phone=fields.phone&&fields.phone!=='N/A'?fields.phone:'';
+    const addrSize=addr.length>60?14:addr.length>40?16:18;
+    const children=[
+      new TextRun({text:lbl,bold:true,size:22,font:'Calibri'}),
+      new TextRun({text:val,bold:true,size:22,font:'Calibri',color:'1a237e'}),
+      new TextRun({text:'    '+lbl2,bold:true,size:22,font:'Calibri'}),
+      new TextRun({text:val2,bold:true,size:22,font:'Calibri',color:'1a237e'})
+    ];
+    if(addr) children.push(
+      new TextRun({text:'    Addr: ',bold:true,size:addrSize,font:'Calibri',color:'555555'}),
+      new TextRun({text:addr,size:addrSize,font:'Calibri',color:'555555'})
+    );
+    if(phone) children.push(
+      new TextRun({text:'    Ph: ',bold:true,size:18,font:'Calibri',color:'555555'}),
+      new TextRun({text:phone,size:18,font:'Calibri',color:'555555'})
+    );
+    return new TableCell({
+      borders:{top:TB,bottom:TB,left:TB,right:TB},
+      margins:CM, columnSpan:2,
+      children:[new Paragraph({spacing:{before:0,after:0},children})]
+    });
+  };
+
+  const demoTable=new Table({
+    width:{size:100,type:WidthType.PERCENTAGE},
+    borders:{top:TB,bottom:TB,left:TB,right:TB,insideHorizontal:TB,insideVertical:TB},
+    rows:[
+      new TableRow({children:[dCellWide('Patient Name: ',fields.patientName,'Age: ',fields.age+' / Sex: '+fields.sex)]}),
+      new TableRow({children:[dCell('Scan Type: ',fields.scanType+(fields.scanCode?' ['+fields.scanCode+']':''),true),dCell('Scan Date: ',scanDateClean,true)]}),
+      new TableRow({children:[dCell('Referral Doctor: ',fields.referralDoctor),dCell('Ref: ',makeRefCode(fields.serial,fields.token))]})
+    ]
+  });
+
+  // ─── PATIENT PHOTO (if available) ───
+  // Fetch from fields._patient_photo_url (set when phone-lookup mode used)
+  let patientPhotoData = null;
+  if (fields._patient_photo_url) {
+    try {
+      // Drive URLs need to be converted: https://drive.google.com/file/d/<id>/view → uc?id=<id>
+      let url = fields._patient_photo_url;
+      const idMatch = url.match(/\/d\/([^\/]+)/);
+      if (idMatch) url = 'https://drive.google.com/uc?export=view&id=' + idMatch[1];
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const buf = await resp.arrayBuffer();
+        patientPhotoData = new Uint8Array(buf);
+      }
+    } catch (e) { console.warn('Photo fetch failed:', e); }
+  }
+
+  // Wrap demoTable + photo into a 2-column row
+  let demoBlock;
+  if (patientPhotoData) {
+    demoBlock = new Table({
+      width:{size:100,type:WidthType.PERCENTAGE},
+      borders:{top:NB,bottom:NB,left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
+      rows:[new TableRow({children:[
+        new TableCell({borders:NO_BDR,width:{size:78,type:WidthType.PERCENTAGE},margins:{top:0,bottom:0,left:0,right:60},children:[demoTable]}),
+        new TableCell({borders:NO_BDR,width:{size:22,type:WidthType.PERCENTAGE},verticalAlign:VerticalAlign.TOP,margins:{top:0,bottom:0,left:0,right:0},children:[
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[
+            new ImageRun({data:patientPhotoData,transformation:{width:90,height:115},type:'png'})
+          ]})
+        ]})
+      ]})]
+    });
+  } else {
+    demoBlock = demoTable;
+  }
+
+  // No watermark in Word document
+
+  // Scan title — tight spacing since thread fills the gap
+  const scanTitle=new Paragraph({
+    alignment:AlignmentType.CENTER,
+    spacing:{before:80,after:60},
+    children:[new TextRun({text:(fields.scanType||'ULTRASOUND STUDY').toUpperCase(),font:'Calibri',size:26,bold:true})]
+  });
+
+  // ─── FOOTER ───
+  const footerTable=new Table({
+    width:{size:100,type:WidthType.PERCENTAGE},
+    borders:{top:{style:BorderStyle.SINGLE,size:4,color:pal.main},bottom:{style:BorderStyle.SINGLE,size:4,color:pal.main},left:NB,right:NB,insideHorizontal:NB,insideVertical:NB},
+    rows:[
+      new TableRow({children:[
+        new TableCell({borders:NO_BDR,width:{size:38,type:WidthType.PERCENTAGE},margins:CM,children:[
+          new Paragraph({spacing:{before:0,after:0},children:[new TextRun({text:'📞 7204764969  |  drlgkscan@gmail.com',bold:true,size:18,font:'Calibri',color:pal.main})]})
+        ]}),
+        new TableCell({borders:NO_BDR,width:{size:28,type:WidthType.PERCENTAGE},margins:CM,children:[
+          new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[new TextRun({text:'Near Yamaha Showroom, Court Road, Sirsi',size:16,font:'Calibri',color:'555555'})]})
+        ]}),
+        new TableCell({borders:NO_BDR,width:{size:20,type:WidthType.PERCENTAGE},margins:CM,children:[
+          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:0},children:[new TextRun({text:'Dr Satish B  MBBS DMRD',bold:true,size:18,font:'Calibri',color:pal.main})]})
+        ]}),
+        new TableCell({borders:NO_BDR,width:{size:14,type:WidthType.PERCENTAGE},margins:CM,children:[
+          new Paragraph({alignment:AlignmentType.RIGHT,spacing:{before:0,after:0},children:[
+            new TextRun({text:'Pg ',size:16,font:'Calibri',color:'888888'}),
+            new TextRun({children:[PageNumber.CURRENT],size:16,font:'Calibri',color:'888888'}),
+            new TextRun({text:'/',size:16,font:'Calibri',color:'888888'}),
+            new TextRun({children:[PageNumber.TOTAL_PAGES],size:16,font:'Calibri',color:'888888'}),
+            new TextRun({text:'  PTO↓',size:15,font:'Calibri',color:'aaaaaa',italics:true})
+          ]})
+        ]})
+      ]})
+    ]
+  });
+
+  // ─── ASSEMBLE DOCUMENT ───
+  const doc=new Document({sections:[{
+    properties:{page:{
+      size:{width:11906,height:16838},
+      margin:{top:720,right:567,bottom:720,left:567,header:284,footer:284}
+    }},
+    headers:{default:new Header({children:[headerTable,demoBlock]})},
+    footers:{default:new Footer({children:[footerTable]})},
+    children:[scanTitle,...bodyElements]
+  }]});
+
+  const _fn=fields.patientName.trim().split(' ')[0].replace(/[^a-zA-Z]/g,'');
+  const sc=(fields.scanCode||fields.scanType||'scan').replace(/\s+/g,'').replace(/[^a-zA-Z0-9]/g,'');
+  const dt=scanDateClean.replace(/\//g,'');
+  const _ser=(fields.serial||'').replace(/\s+/g,'').replace(/[^a-zA-Z0-9]/g,'').slice(0,20);
+  const filename=`${_fn}_${sc}_${dt}_${_ser}.docx`;
+  const blob=await Packer.toBlob(doc);
+  saveAs(blob,filename);
+  setStatus(`✅ Report saved: ${filename}`, 'ok');
+  // Upload to Drive + link to Visit (only if backend visit_id available — phone-lookup mode)
+  if (fields._visit_id) {
+    try { await uploadReportToDrive(fields, blob, filename); } catch(e) { console.error(e); }
+  }
+}
+
+// ─── MY TEMPLATE PARSER ───────────────────────────────
+function buildMyTemplate(text, isPreg) {
+  const lines=text.split('\n');
+  const elems=[];
+  for(const line of lines){
+    const trimmed=line.trim();
+    if(!trimmed){ elems.push(new Paragraph({spacing:{before:0,after:0,line:276},children:[new TextRun({text:'',size:24,font:'Calibri'})]})); continue; }
+    if(trimmed===trimmed.toUpperCase()&&trimmed.length>2&&!/^\d/.test(trimmed)){
+      elems.push(new Paragraph({spacing:{before:120,after:40,line:276},children:[new TextRun({text:trimmed,bold:true,size:24,font:'Calibri',color:'111111'})]}));
+    } else if(line.startsWith('  ')){
+      elems.push(new Paragraph({spacing:{before:60,after:20,line:276},children:[new TextRun({text:trimmed,bold:true,size:24,font:'Calibri'})]}));
+    } else {
+      elems.push(new Paragraph({spacing:{before:0,after:0,line:276},children:[new TextRun({text:trimmed,size:24,font:'Calibri'})]}));
+    }
+  }
+  if(isPreg){
+    elems.push(new Paragraph({spacing:{before:80,after:0,line:240},border:{top:{style:BorderStyle.DASHED,size:3,color:'AAAAAA'}},children:[new TextRun({text:'ಲಿಂಗ ಪರೀಕ್ಷೆ ಮಾಡಲಾಗಿಲ್ಲ ಮತ್ತು ತಿಳಿಸಲಾಗಿಲ್ಲ. Sex of the foetus has neither been determined nor disclosed. PCPNDT Act compliant.',italics:true,size:17,font:'Calibri',color:'555555'})]}));
+  }
+  return elems;
+}
+
+// ─── DEFAULT TEMPLATE BUILDERS ────────────────────────
+
+function inlinePara(label, text) {
+  return new Paragraph({spacing:{before:0,after:0,line:264},children:[
+    new TextRun({text:label+': ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:text,size:24,font:'Calibri'})
+  ]});
+}
+
+function buildABD(f, secHdr, subHdr, paired4, emptyLine, impLine) {
+  const isFemale=(f.sex||'').toLowerCase().includes('f');
+  const isMale=(f.sex||'').toLowerCase().includes('m');
+  const elems=[];
+
+  elems.push(secHdr('FINDINGS'));
+  elems.push(inlinePara('Liver','Normal in size and echotexture. No focal lesion. Portal vein appears normal.'));
+  elems.push(inlinePara('Gallbladder','Normal in size and wall thickness. No calculi or polyps. CBD is not dilated.'));
+  elems.push(inlinePara('Pancreas','Normal in size and echotexture. No focal lesion or ductal dilatation.'));
+  elems.push(inlinePara('Spleen','Normal in size and echotexture. No focal lesion.'));
+  elems.push(inlinePara('Right Kidney','Normal in size (      ×       cm). Cortical thickness       cm. Corticomedullary differentiation maintained. PCS not dilated. No calculus or hydronephrosis.'));
+  elems.push(inlinePara('Left Kidney','Normal in size (      ×       cm). Cortical thickness       cm. Corticomedullary differentiation maintained. PCS not dilated. No calculus or hydronephrosis.'));
+  elems.push(inlinePara('Urinary Bladder','Well-distended. Walls appear normal. No calculus or mass. Post-void residue:      ml.'));
+  elems.push(inlinePara('Intestines','No obvious bowel loop distension or fluid-filled loops. Normal peristalsis. No free intraperitoneal fluid.'));
+  elems.push(inlinePara('Retroperitoneum','No obvious lymphadenopathy. Aorta calibre appears normal.'));
+
+  if(isFemale){
+    elems.push(inlinePara('Uterus','Normal in size, shape and position. Myometrium homogeneous. Endometrium      mm — appropriate for age. Cervix appears normal.'));
+    elems.push(inlinePara('Ovaries','Both ovaries are normal in size and echotexture. No obvious cyst or adnexal mass. No free fluid in POD.'));
+  }
+  if(isMale){
+    elems.push(inlinePara('Prostate','Normal in size and echotexture. Volume      ml. No focal lesion. Periurethral area appears normal.'));
+  }
+
+  elems.push(impLine());
+  elems.push(secHdr('IMPRESSION'));
+  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(inlinePara('Recommendation',''));
+  elems.push(emptyLine());
+  return elems;
+}
+
+function buildEP(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTableCRL, pcpndtPara) {
+  const isFol=(f.scanCode||'').toUpperCase().includes('FS')||(f.scanCode||'').toUpperCase().includes('FOL')||(f.scanCode||'').toUpperCase()==='FO';
+  const elems=[];
+  if(isFol){
+    elems.push(secHdr('FINDINGS'));
+    elems.push(inlinePara('Uterus','Normal in size and position. Myometrium homogeneous. Endometrium      mm — Trilaminar pattern.'));
+    elems.push(inlinePara('Right Ovary','Normal. Dominant follicle      mm. No cyst.'));
+    elems.push(inlinePara('Left Ovary','Normal. Dominant follicle      mm. No cyst.'));
+    elems.push(inlinePara('POD','No free fluid.'));
+  } else {
+    elems.push(secHdr('GESTATIONAL AGE'));
+    elems.push(gaTableCRL());
+    elems.push(secHdr('FINDINGS'));
+    elems.push(inlinePara('Uterus','Anteverted, normal in size. Myometrium homogeneous. No fibroid.'));
+    elems.push(inlinePara('Gestational Sac','Present, regular borders. MSD      mm.'));
+    elems.push(inlinePara('Yolk Sac',''));
+    elems.push(inlinePara('Fetal Pole','     mm CRL. Cardiac activity — Present / Absent. FHR      bpm.'));
+    elems.push(inlinePara('Adnexa','No adnexal mass or cyst noted.'));
+    elems.push(inlinePara('Cervix','Normal, closed. No cervical mass.'));
+    elems.push(inlinePara('POD','No free fluid.'));
+  }
+  elems.push(impLine());
+  elems.push(secHdr('IMPRESSION'));
+  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(pcpndtPara());
+  return elems;
+}
+
+function buildNT(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTableCRL, pcpndtPara) {
+  const elems=[];
+  elems.push(secHdr('GESTATIONAL AGE'));
+  elems.push(gaTableCRL());
+  elems.push(secHdr('NT MEASUREMENTS & MARKERS'));
+  elems.push(paired4([
+    ['NT Thickness','mm','Nasal Bone','Present / Absent / Hypoplastic'],
+    ['CRL','mm','BPD','mm'],
+    ['FHR','bpm','Facial Angle','°'],
+    ['NB Length','mm','Nuchal Fold','mm'],
+    ['Ductus Venosus','Normal / Abnormal','Tricuspid Flow','Normal / Regurgitation'],
+    ['IT Translucency','mm','Prenasal Thickness','mm'],
+    ['Fetal Movements','Present','Fetal Morphology','Grossly normal for GA'],
+  ]));
+  elems.push(secHdr('UTERUS & ADNEXA'));
+  elems.push(inlinePara('Uterus','Normal in size. No fibroid. Cervical length      cm — not short.'));
+  elems.push(inlinePara('Adnexa','No obvious adnexal mass or cyst. No free fluid in POD.'));
+  elems.push(impLine());
+  elems.push(secHdr('IMPRESSION'));
+  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(pcpndtPara());
+  return elems;
+}
+
+function buildAnomaly(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTable, placentaRow, pcpndtPara, italicNote) {
+  const elems=[];
+  elems.push(secHdr('GESTATIONAL AGE'));
+  elems.push(gaTable());
+  elems.push(italicNote('(Biometry measurements on reverse — printed directly from USG machine)'));
+  elems.push(secHdr('FETAL PROFILE'));
+  elems.push(paired4([
+    ['Presentation','Cephalic','Lie','Longitudinal'],
+    ['Fetal Head','','Fetal Spine',''],
+    ['FHR','bpm','Fetal Weight','g ±'],
+    ['AFI','cm — Normal','SVP','cm'],
+    ['Fetal Movements','Present','Fetal Tone','Normal'],
+    ['Cord / Neck','None','Umbilical Cord','3-vessel'],
+  ]));
+  elems.push(secHdr('FETAL MORPHOLOGY'));
+  elems.push(inlinePara('Head & Brain','Calvarium intact. Midline echo present. Cerebellum and cisterna magna normal. Lateral ventricles within limits.'));
+  elems.push(inlinePara('Face & Neck','Orbits appear normal. Lips and palate appear intact. Neck appears normal. No nuchal mass.'));
+  elems.push(inlinePara('Chest & Heart','Cardiac situs normal. Four-chamber view appears normal. Outflow tracts appear normal. Lungs appear echogenic.'));
+  elems.push(inlinePara('Abdomen','Anterior abdominal wall intact. Stomach bubble visualised. Kidneys appear normal bilaterally. Bladder visualised.'));
+  elems.push(inlinePara('Spine & Limbs','Spine appears intact from cervical to sacral segments. All four limbs with long bones visualised.'));
+  elems.push(secHdr('PLACENTA & LIQUOR'));
+  elems.push(placentaRow());
+  elems.push(impLine());
+  elems.push(secHdr('IMPRESSION'));
+  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(pcpndtPara());
+  return elems;
+}
+
+function buildGrowth(f, secHdr, subHdr, paired4, emptyLine, impLine, gaTable, placentaRow, dopplerTable, pcpndtPara, italicNote) {
+  const isGD=(f.scanCode||'').toUpperCase().includes('GD');
+  const elems=[];
+  elems.push(secHdr('GESTATIONAL AGE'));
+  elems.push(gaTable());
+  elems.push(italicNote('(Biometry measurements on reverse — printed directly from USG machine)'));
+  elems.push(secHdr('FETAL PROFILE'));
+  elems.push(paired4([
+    ['Presentation','Cephalic','Lie','Longitudinal'],
+    ['Fetal Head','','Fetal Spine',''],
+    ['FHR','bpm — Regular','Fetal Weight','g ± (appropriate for GA)'],
+    ['AFI','cm — Normal','SVP','cm — Normal'],
+    ['Fetal Movements','Present','Fetal Tone','Normal / Good'],
+    ['Cord / Neck','None','Umbilical Cord','3-vessel, normal insertion'],
+  ]));
+  elems.push(secHdr('BIOPHYSICAL PROFILE'));
+  elems.push(paired4([
+    ['Fetal Breathing Movements','Present','Gross Body Movements','≥3 episodes / 30 min'],
+    ['Fetal Tone','Normal','Amniotic Fluid','Normal'],
+    ['BPP Score','8/8 — Normal','NST','Not done'],
+  ]));
+  elems.push(secHdr('PLACENTA'));
+  elems.push(placentaRow());
+  if(isGD){
+    elems.push(secHdr('UTERINE ARTERY DOPPLER'));
+    elems.push(dopplerTable());
+    elems.push(emptyLine());
+  }
+  elems.push(secHdr('LIMITED FETAL ANATOMY EVALUATION'));
+  elems.push(new Paragraph({spacing:{before:0,after:20,line:276},children:[
+    new TextRun({text:'Limited Fetal Anatomy: ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Head, spine, cardiac four-chamber view, abdominal wall, kidneys, bladder — grossly normal for gestational age. ',size:24,font:'Calibri'}),
+    new TextRun({text:'Cervix: ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'Grossly normal on transabdominal evaluation. ',size:24,font:'Calibri'}),
+    new TextRun({text:'Adnexa: ',bold:true,size:24,font:'Calibri'}),
+    new TextRun({text:'No obvious adnexal mass. ',size:24,font:'Calibri'}),
+    new TextRun({text:'Evaluation limited by fetal position / maternal habitus.',italics:true,size:24,font:'Calibri',color:'666666'}),
+  ]}));
+  elems.push(secHdr('MATERNAL UPPER ABDOMEN'));
+  elems.push(new Paragraph({spacing:{before:0,after:20,line:276},children:[new TextRun({text:'Not evaluated. (Edit if assessed.)',italics:true,size:24,font:'Calibri',color:'777777'})]}));
+  elems.push(impLine());
+  elems.push(secHdr('IMPRESSION'));
+  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(subHdr('RECOMMENDATION'));
+  elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(pcpndtPara());
+  return elems;
+}
+
+function buildSmall(f, secHdr, subHdr, emptyLine, impLine) {
+  const c=(f.scanCode||'').toUpperCase();
+  const blank=()=>new Paragraph({spacing:{before:0,after:28,line:264},children:[new TextRun({text:'',size:24,font:'Calibri'})]});
+  const elems=[];
+
+  elems.push(secHdr('FINDINGS'));
+
+  if(c.includes('BR')){
+    elems.push(inlinePara('Right Breast',''));
+    elems.push(blank()); elems.push(blank());
+    elems.push(inlinePara('Left Breast',''));
+    elems.push(blank()); elems.push(blank());
+    elems.push(inlinePara('Axillary Lymph Nodes','No significant axillary lymphadenopathy bilaterally.'));
+    elems.push(inlinePara('BI-RADS Category',''));
+
+  } else if(c.includes('NK')||c.includes('THY')){
+    elems.push(inlinePara('Right Lobe','Normal in size and echotexture. No nodule or calcification.'));
+    elems.push(inlinePara('Left Lobe','Normal in size and echotexture. No nodule or calcification.'));
+    elems.push(inlinePara('Isthmus','Normal in thickness. No lesion.'));
+    elems.push(inlinePara('Cervical Lymph Nodes','No significant cervical lymphadenopathy.'));
+    elems.push(inlinePara('TI-RADS Category',''));
+
+  } else if(c.includes('SCR')){
+    elems.push(inlinePara('Right Testis','Normal in size, shape and echotexture. No focal lesion or microcalcification. Epididymis normal. No hydrocele.'));
+    elems.push(inlinePara('Left Testis','Normal in size, shape and echotexture. No focal lesion or microcalcification. Epididymis normal. No hydrocele.'));
+    elems.push(inlinePara('Varicocele','Not seen.'));
+
+  } else if(c.includes('EYE')){
+    elems.push(inlinePara('Right Eye',''));
+    elems.push(blank()); elems.push(blank());
+    elems.push(inlinePara('Left Eye',''));
+    elems.push(blank()); elems.push(blank());
+
+  } else if(c.includes('MSK')){
+    elems.push(inlinePara('Region Studied',''));
+    elems.push(blank()); elems.push(blank()); elems.push(blank());
+
+  } else {
+    elems.push(blank()); elems.push(blank());
+    elems.push(blank()); elems.push(blank());
+  }
+
+  elems.push(impLine());
+  elems.push(secHdr('IMPRESSION'));
+  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(inlinePara('Recommendation',''));
+  elems.push(emptyLine());
+  return elems;
+}
+
+function buildDoppler(f, secHdr, subHdr, emptyLine, impLine, dopplerTable) {
+  const elems=[];
+  elems.push(inlinePara('Vessel Studied',''));
+  elems.push(secHdr('DOPPLER INDICES'));
+  elems.push(dopplerTable());
+  elems.push(inlinePara('Waveform',''));
+  elems.push(inlinePara('Flow Pattern',''));
+  elems.push(inlinePara('Additional Findings',''));
+  elems.push(impLine());
+  elems.push(secHdr('IMPRESSION'));
+  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(inlinePara('Recommendation',''));
+  return elems;
+}
+
+function buildGeneric(secHdr, subHdr, emptyLine, impLine) {
+  const elems=[];
+  elems.push(secHdr('FINDINGS'));
+  elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(impLine());
+  elems.push(secHdr('IMPRESSION'));
+  elems.push(emptyLine()); elems.push(emptyLine()); elems.push(emptyLine());
+  elems.push(inlinePara('Recommendation',''));
+  return elems;
+}
+</script>
+</div></div></div>
+
+<script>
+// ── Shared API ───────────────────────────────────────────────────────
+const CLINIC_API=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8080':'http://'+window.location.hostname+':8080';
+function getDeviceToken(){let t=localStorage.getItem('drlgk_device_token');if(!t){t='DV-'+Math.random().toString(36).substr(2,8).toUpperCase()+Math.random().toString(36).substr(2,8).toUpperCase();localStorage.setItem('drlgk_device_token',t);}return t;}
+async function apiGet(ep){try{const r=await fetch(CLINIC_API+ep+(ep.includes('?')?'&':'?')+'t='+Date.now());return r.json();}catch(e){return {};}}
+async function apiPost(ep,data){try{const r=await fetch(CLINIC_API+ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return r.json();}catch(e){return {};}}
+
+// ── Live queue panel ─────────────────────────────────────────────────
+let queueList=[];
+async function addWalkin(){
+  const name=document.getElementById('wiName').value.trim();
+  const scan=document.getElementById('wiScan').value.trim();
+  const emerg=document.getElementById('wiEmerg').checked;
+  if(!name||!scan){alert('Enter name and scan type');return;}
+  try{
+    const d=await apiGet('/api/queue');
+    d.list=d.list||[];
+    const tokResp=await apiGet('/api/token/next');
+    const tok=String(tokResp.token||1);
+    const dateStr=new Date().toLocaleString('en-IN');
+    d.list.push({token:tok,name:name,scan:scan,phone:'',refdr:'Walk-in',
+      pregnancy:'No',amount:'0',payment:'Cash',serial:'',
+      date:dateStr,status:'waiting',
+      time:new Date().toISOString(),emergency:emerg});
+    // Fix D: removed d.serial increment — /api/token/next already increments on server
+    await apiPost('/api/queue',d);
+    // Fix E: save walk-in to patient history
+    apiPost('/api/patient',{
+      phone:'', name:name, age:'', sex:'', address:'',
+      date:dateStr, scan:scan, amount:'0',
+      payment:'Cash', refdr:'Walk-in',
+      token:tok, billRef:'', serial:''
+    }).catch(()=>{});
+    document.getElementById('wiName').value='';
+    document.getElementById('wiScan').value='';
+    document.getElementById('wiEmerg').checked=false;
+    document.getElementById('walkinForm').style.display='none';
+    loadQueue();
+  }catch(e){alert('Failed to add: '+e);}
+}
+
+async function loadQueue(){
+  try{
+    const d=await apiGet('/api/queue');
+    queueList=d.list||[];
+    const pending=queueList.filter(p=>p.status!=='done').length;
+    const done=queueList.filter(p=>p.status==='done').length;
+    // Badge shows only non-done (pending)
+    document.getElementById('queueCount').textContent=pending||queueList.length;
+    // Session recovery banner
+    const banner=document.getElementById('recoveryBanner');
+    if(banner){
+      if(done>0 && queueList.length>0){
+        banner.textContent=`↻ Session restored — ${done} already done today`;
+        banner.style.display='block';
+      } else {
+        banner.style.display='none';
+      }
+    }
+    const el=document.getElementById('queueCards');
+    if(!queueList.length){
+      el.innerHTML='<div style="color:#475569;font-size:11px;text-align:center;padding:20px">No patients yet</div>';
+      document.getElementById('queueSidePanel').style.display='flex';
+      document.getElementById('queueSidePanel').style.flexDirection='column';
+      return;
+    }
+    const indexed=queueList.map((p,i)=>({p,i}));
+    const sorted=[
+      ...indexed.filter(({p})=>p.status==='scanning'),
+      ...indexed.filter(({p})=>p.status!=='done'&&p.status!=='scanning'),
+      ...indexed.filter(({p})=>p.status==='done'),
+    ];
+    el.innerHTML=sorted.map(({p,i})=>{
+      const isDone=p.status==='done';
+      const isScanning=p.status==='scanning';
+      const statusColor=isDone?'#334155':isScanning?'#f59e0b':'#60a5fa';
+      const statusLabel=isDone?'\u2713':isScanning?'Scanning':'Waiting';
+      const isEmerg=p.emergency===true||p.emergency==='true';
+      const cardBg=isDone?'#080d14':isEmerg?'#2d0a0a':'#0f172a';
+      const op=isDone?'.4':'1';
+      const emergBadge=isEmerg?'<span style="font-size:9px;background:#dc262622;color:#f87171;padding:1px 6px;border-radius:8px;margin-left:4px">!</span>':'';
+      const refBadge=p.billRef?`<span style="font-size:8px;color:#1A7A5E;opacity:.7">${p.billRef}</span>`:'';
+      const strike=isDone?'text-decoration:line-through;':'';
+      return `<div onclick="loadFromQueue(${i})" style="background:${cardBg};border-radius:7px;padding:9px 10px;margin-bottom:7px;cursor:pointer;border-left:3px solid ${isEmerg?'#ef4444':statusColor};opacity:${op};transition:all .15s" onmouseover="this.style.opacity='${isDone?'.55':'.8'}'" onmouseout="this.style.opacity='${op}'">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+          <span style="font-size:15px;font-weight:900;color:${isEmerg?'#f87171':statusColor};${strike}">T-${p.token||i+1}${emergBadge}</span>
+          <span style="font-size:9px;background:${statusColor}22;color:${statusColor};padding:1px 6px;border-radius:8px">${statusLabel}</span>
+        </div>
+        <div style="font-size:12px;color:${isDone?'#475569':'#f1f5f9'};font-weight:600;${strike}">${p.name||'Patient'}</div>
+        <div style="display:flex;justify-content:space-between;margin-top:2px">
+          <span style="font-size:10px;color:#64748b">${p.scan||''}</span>
+          ${refBadge}
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){ console.warn('Queue load failed',e); }
+}
+
+function loadFromQueue(i){
+  const p=queueList[i];
+  if(!p)return;
+  // Build a fields object matching extractor format
+  const fields={
+    patientName:p.name||'', age:p.age||'', sex:p.sex||'',
+    phone:p.phone||'', address:p.address||'', referralDoctor:p.refdr||'',
+    pregnancy:p.pregnancy||'No', lmp:'', edd:'',
+    scanCode:'', scanType:p.scan||'',
+    scanPrice:parseFloat(p.amount)||0, advance:0,
+    amountPaid:parseFloat(p.amount)||0, additional:0,
+    discount:0, totalPayable:parseFloat(p.amount)||0,
+    netPaid:parseFloat(p.amount)||0, pending:0,
+    serial:p.serial||'', dateTime:p.date||'',
+    paymentMethod:p.payment||'Cash', token:p.token||''
+  };
+  pendingFields=fields;
+  showConfirmPanel(fields,[],false);
+  markQueueStatus(p.token,'scanning');
+}
+
+async function markQueueStatus(tok, status){
+  try{
+    await apiPost('/api/queue/status',{token:String(tok),status});
+    loadQueue();
+  }catch(e){}
+}
+
+async function markReportDone(token){
+  try{
+    await apiPost('/api/queue/now',{token:String(token)});
+    loadQueue();
+  }catch(e){}
+}
+
+// Poll queue every 4 seconds
+loadQueue();
+setInterval(loadQueue,4000);
+</script>
+
+
+
+<style>
+.scanroom-voice{position:fixed;bottom:16px;right:16px;z-index:999;display:flex;flex-direction:column;align-items:flex-end;gap:8px;}
+.sv-btn{width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;font-size:22px;background:#1A7A5E;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.3);transition:all .2s;}
+.sv-btn.listening{background:#ef4444;animation:svblink 1s infinite;}
+@keyframes svblink{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.sv-bubble{background:#1e293b;color:#f1f5f9;font-size:12px;padding:8px 14px;border-radius:20px;max-width:220px;text-align:right;box-shadow:0 2px 8px rgba(0,0,0,.3);display:none;}
+.sv-bubble.show{display:block;}
+</style>
+
+<div class="scanroom-voice">
+  <div class="sv-bubble" id="svBubble">Tap mic and speak</div>
+  <button class="sv-btn" id="svBtn" onclick="toggleScanVoice()" title="Voice — Next Token / Token Status">🎤</button>
+</div>
+
+<script>
+// ── SCAN ROOM VOICE — Token control only ─────────────
+let svRec = null, svListening = false;
+
+function initScanVoice(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ showSVBubble('Not supported — use Edge'); return false; }
+  svRec = new SR();
+  svRec.lang='en-IN'; svRec.continuous=false; svRec.interimResults=false;
+  svRec.onresult = e => {
+    const said = e.results[0][0].transcript.toLowerCase().trim();
+    showSVBubble('Heard: "' + said + '"');
+    handleScanVoice(said);
+  };
+  svRec.onend = () => {
+    svListening=false;
+    document.getElementById('svBtn').classList.remove('listening');
+    document.getElementById('svBtn').textContent='🎤';
+  };
+  svRec.onerror = e => {
+    svListening=false;
+    document.getElementById('svBtn').classList.remove('listening');
+    document.getElementById('svBtn').textContent='🎤';
+    showSVBubble('Error: ' + e.error);
+  };
+  return true;
+}
+
+function toggleScanVoice(){
+  if(!svRec && !initScanVoice()) return;
+  if(svListening){ svRec.stop(); return; }
+  svListening=true;
+  document.getElementById('svBtn').classList.add('listening');
+  document.getElementById('svBtn').textContent='🔴';
+  showSVBubble('Listening...');
+  svRec.start();
+}
+
+function showSVBubble(msg, duration=3000){
+  const b=document.getElementById('svBubble');
+  b.textContent=msg; b.classList.add('show');
+  if(duration) setTimeout(()=>b.classList.remove('show'), duration);
+}
+
+function svSpeak(text){
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='en-IN'; u.rate=1.1; u.volume=0.8;
+  window.speechSynthesis.speak(u);
+}
+
+async function handleScanVoice(cmd){
+  const API=(window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')?'http://localhost:8080':'http://'+window.location.hostname+':8080';
+
+  // NEXT TOKEN
+  if(cmd.includes('next token')||cmd.includes('next patient')||cmd.includes('call next')){
+    try{
+      const d=await fetch(API+'/api/queue?t='+Date.now()).then(r=>r.json());
+      const next=(d.current||0)+1;
+      const now=new Date().toISOString();
+      const newLog=[...(d.log||[]),{num:next,ts:now}].slice(-50);
+      await fetch(API+'/api/queue',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({...d,current:next,updatedAt:now,log:newLog})});
+      // Also push to Firebase token display
+      const FB='https://drlgk-clinic-live-token-default-rtdb.asia-southeast1.firebasedatabase.app/drlgk-queue.json';
+      await fetch(FB,{method:'PUT',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({current:next,total:(d.total||0)+1,updatedAt:now,log:newLog})});
+      showSVBubble('✅ Token ' + next + ' called', 4000);
+      svSpeak('Token ' + next);
+      loadQueue();
+    }catch(e){ showSVBubble('Failed — check connection'); }
+    return;
+  }
+  // TOKEN STATUS
+  if(cmd.includes('token status')||cmd.includes('how many waiting')||cmd.includes('queue status')){
+    try{
+      const d=await fetch(API+'/api/queue?t='+Date.now()).then(r=>r.json());
+      const cur=d.current||0;
+      const waiting=(d.list||[]).filter(p=>p.status==='waiting').length;
+      showSVBubble('Token '+cur+' · '+waiting+' waiting', 4000);
+      svSpeak('Token '+cur+'. '+waiting+' patients waiting.');
+    }catch(e){ showSVBubble('Failed'); }
+    return;
+  }
+  // CURRENT TOKEN
+  if(cmd.includes('current token')||cmd.includes('which token')){
+    try{
+      const d=await fetch(API+'/api/queue?t='+Date.now()).then(r=>r.json());
+      const cur=d.current||0;
+      showSVBubble('Current: Token '+cur, 3000);
+      svSpeak('Current token is '+cur);
+    }catch(e){}
+    return;
+  }
+  showSVBubble('Not recognised — try again', 3000);
+}
+
+// Spacebar shortcut in extractor too
+document.addEventListener('keydown', e=>{
+  if(e.code==='Space' && e.target.tagName!=='INPUT' && e.target.tagName!=='TEXTAREA'){
+    e.preventDefault(); toggleScanVoice();
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// DEVICE PAIRING & BACKEND INTEGRATION
+// ════════════════════════════════════════════════════════════════════════
+const DEVICE_KEY = 'drlgk_reporter_device';
+
+function getStoredDevice() {
+  try {
+    const raw = localStorage.getItem(DEVICE_KEY);
+    if (!raw) return null;
+    const dev = JSON.parse(raw);
+    if (!dev.device_id || !dev.label) return null;
+    return dev;
+  } catch (e) { return null; }
+}
+
+function setStoredDevice(deviceId, label, role) {
+  const dev = { device_id: deviceId, label: label, role: role || 'scan-room', paired_at: Date.now() };
+  localStorage.setItem(DEVICE_KEY, JSON.stringify(dev));
+  return dev;
+}
+
+function clearStoredDevice() {
+  localStorage.removeItem(DEVICE_KEY);
+}
+
+function unpair() {
+  if (!confirm('Unpair this device? You will need a new pairing code.')) return;
+  clearStoredDevice();
+  location.reload();
+}
+
+function resetForRepair() {
+  clearStoredDevice();
+  location.reload();
+}
+
+async function attemptPair() {
+  const code = document.getElementById('pairCodeInput').value.trim().toUpperCase();
+  const label = document.getElementById('deviceLabelInput').value.trim();
+  const errEl = document.getElementById('pairError');
+  errEl.style.display = 'none';
+  if (code.length < 6) { errEl.textContent = 'Pairing code looks too short.'; errEl.style.display='block'; return; }
+  if (!label) { errEl.textContent = 'Please enter a device label.'; errEl.style.display='block'; return; }
+  document.getElementById('pairPrompt').style.display = 'none';
+  document.getElementById('pairValidating').style.display = 'block';
+  try {
+    const r = await fetch(API_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'pairDevice', token: API_TOKEN, pair_code: code, device_label: label, user_agent: navigator.userAgent.slice(0,200) })
+    });
+    const data = await r.json();
+    if (data.success && data.device_id) {
+      setStoredDevice(data.device_id, label, data.role);
+      document.getElementById('pairValidating').style.display = 'none';
+      enterApp(data.device_id, label, data.role);
+    } else {
+      document.getElementById('pairValidating').style.display = 'none';
+      document.getElementById('pairPrompt').style.display = 'block';
+      errEl.textContent = data.error || 'Pairing code not recognised.';
+      errEl.style.display = 'block';
+      document.getElementById('pairCodeInput').value = '';
+    }
+  } catch (e) {
+    document.getElementById('pairValidating').style.display = 'none';
+    document.getElementById('pairPrompt').style.display = 'block';
+    errEl.textContent = 'Connection error. Check internet.';
+    errEl.style.display = 'block';
+  }
+}
+
+function enterApp(deviceId, label, role) {
+  document.getElementById('pairGate').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'flex';
+}
+
+function showRevokedScreen() {
+  document.getElementById('mainApp').style.display = 'none';
+  document.getElementById('pairGate').style.display = 'flex';
+  document.getElementById('pairPrompt').style.display = 'none';
+  document.getElementById('pairValidating').style.display = 'none';
+  document.getElementById('revokedScreen').style.display = 'block';
+  clearStoredDevice();
+}
+
+function checkDeviceOnLoad() {
+  const dev = getStoredDevice();
+  if (dev) {
+    enterApp(dev.device_id, dev.label, dev.role);
+  } else {
+    setTimeout(() => {
+      const inp = document.getElementById('pairCodeInput');
+      if (inp) {
+        inp.focus();
+        inp.addEventListener('keypress', (e) => { if (e.key === 'Enter') attemptPair(); });
+      }
+    }, 100);
+  }
+}
+
+// Backend API call helper
+async function apiCall(action, body = {}) {
+  const dev = getStoredDevice();
+  body.action = action;
+  body.token = API_TOKEN;
+  body.device_id = dev ? dev.device_id : '';
+  body.actor = dev ? (dev.label + ' [' + dev.device_id + ']') : 'unpaired';
+  try {
+    const r = await fetch(API_URL, {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    if (data.error === 'device_revoked' || data.error === 'device_not_found') {
+      showRevokedScreen();
+      throw new Error('Device revoked');
+    }
+    return data;
+  } catch (e) {
+    console.error('API call failed:', e);
+    throw e;
+  }
+}
+
+// Phone-lookup mode — fetch latest visit for a phone number
+async function lookupPatientByPhone() {
+  const phoneEl = document.getElementById('phoneLookupInput');
+  if (!phoneEl) return;
+  const phone = phoneEl.value.trim();
+  if (phone.length !== 10) { setStatus('Phone must be 10 digits.', 'err'); return; }
+  setStatus('Looking up patient...', 'info');
+  try {
+    const r = await apiCall('lookupPatient', { phone });
+    if (!r.found) { setStatus('No patient found with phone ' + phone, 'err'); return; }
+    if (!r.visits || r.visits.length === 0) { setStatus('Patient found but no visits yet.', 'warn'); return; }
+    // Find latest visit that doesn't have a finalized report yet
+    const latestVisit = r.visits.find(v => v.report_status !== 'Ready' && v.report_status !== 'Delivered') || r.visits[0];
+    // Build fields object compatible with confirmGenerate
+    const f = {
+      patientName: r.patient.name || 'N/A',
+      age: computeAge(r.patient.dob) || 'N/A',
+      sex: r.patient.sex || 'N/A',
+      phone: r.patient.phone_primary || phone,
+      address: r.patient.address || 'N/A',
+      referralDoctor: latestVisit.referring_doctor_id === 'D-000' ? 'Self' : (latestVisit.referring_doctor_id || 'Self'),
+      pregnancy: latestVisit.is_pregnancy ? 'Yes' : 'No',
+      lmp: latestVisit.lmp || '',
+      edd: latestVisit.edd || '',
+      scanCode: latestVisit.scan_code || '',
+      scanType: latestVisit.scan_type || 'General Study',
+      scanPrice: Number(latestVisit.amount_charged) || 0,
+      advance: Number(latestVisit.advance_amount) || 0,
+      amountPaid: Number(latestVisit.amount_paid_at_billing) || 0,
+      additional: Number(latestVisit.additional_charges) || 0,
+      discount: Number(latestVisit.discount_manual) || 0,
+      totalPayable: Number(latestVisit.total_payable) || 0,
+      netPaid: Number(latestVisit.net_paid) || 0,
+      pending: Number(latestVisit.amount_pending) || 0,
+      serial: latestVisit.serial_number || '',
+      dateTime: latestVisit.visit_date ? new Date(latestVisit.visit_date).toLocaleString('en-IN') : '',
+      paymentMethod: latestVisit.payment_mode || 'Cash',
+      token: latestVisit.token_number || '',
+      // Backend-only fields used to link the report later
+      _visit_id: latestVisit.visit_id,
+      _patient_id: r.patient.patient_id,
+      _patient_photo_url: r.last_photo_url || ''
+    };
+    let warnings = [];
+    if (latestVisit.report_status === 'Ready') warnings.push('⚠️ Report already finalized for this visit. Generating again will create a new file.');
+    pendingFields = f;
+    showConfirmPanel(f, warnings, false);
+    setStatus('Patient loaded. Confirm to proceed.', 'ok');
+  } catch (e) {
+    setStatus('Lookup failed: ' + e.message, 'err');
+  }
+}
+
+function computeAge(dob) {
+  if (!dob) return '';
+  try {
+    const d = new Date(dob);
+    if (isNaN(d.getTime())) return '';
+    const ageMs = Date.now() - d.getTime();
+    return Math.floor(ageMs / (365.25 * 24 * 3600 * 1000));
+  } catch (e) { return ''; }
+}
+
+// After report is generated, upload .docx to Drive and link it to the visit
+async function uploadReportToDrive(fields, blob, filename) {
+  if (!fields._visit_id) return; // No backend visit to link (PDF-drag mode without backend match)
+  try {
+    setStatus('Uploading report to Drive...', 'info');
+    const base64 = await blobToBase64(blob);
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const folder = `reports/${yyyy}/${mm}/${dd}`;
+    const r = await apiCall('uploadFile', {
+      folder, file_name: filename, base64,
+      mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    });
+    if (r.url) {
+      await apiCall('linkVisitToFile', {
+        visit_id: fields._visit_id, file_type: 'report_docx', url: r.url
+      });
+      await apiCall('updateVisitStatus', { visit_id: fields._visit_id, status: 'Ready' });
+      setStatus('✓ Report uploaded to Drive and linked to Visit ' + fields._visit_id, 'ok');
+    }
+  } catch (e) {
+    console.error('Drive upload failed:', e);
+    setStatus('Drive upload failed (report saved locally): ' + e.message, 'warn');
+  }
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result;
+      const base64 = dataUrl.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+checkDeviceOnLoad();
+</script>
+
+</div> <!-- /mainApp -->
+
+</body>

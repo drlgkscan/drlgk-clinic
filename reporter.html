@@ -944,7 +944,12 @@ async function generateWordReport(fields) {
 
   let bodyElements=[];
 
-  if(useMyTpl&&myTplText.trim()) {
+  // ── NEW: per-scan-code markdown template (Library overrides default + My Format) ──
+  const _mdTpl = (typeof window !== 'undefined' && window.tlibLookup) ? window.tlibLookup(fields.scanCode) : null;
+  if (_mdTpl && window.tlibParse) {
+    const _parsed = window.tlibParse(_mdTpl);
+    bodyElements = _parsed.elems;
+  } else if(useMyTpl&&myTplText.trim()) {
     bodyElements=buildMyTemplate(myTplText, isPregnancy(group));
   } else {
     switch(group) {
@@ -2330,5 +2335,566 @@ checkDeviceOnLoad();
 </script>
 
 </div> <!-- /mainApp -->
+
+<!-- ════════════════════════════════════════════════════════════════════
+     TEMPLATE LIBRARY — drop-in patch for reporter.html
+     Paste this entire block just before </body>
+     Adds: markdown parser · template editor UI · cloud sync · lookup hook
+     ════════════════════════════════════════════════════════════════════ -->
+
+<style>
+  /* ─── Template Library Modal ─── */
+  .tlib-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:1100; align-items:center; justify-content:center; }
+  .tlib-overlay.open { display:flex; }
+  .tlib-modal { background:#fff; border-radius:10px; width:min(900px, 96vw); max-height:92vh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 8px 32px rgba(0,0,0,.3); }
+  .tlib-hdr { background:linear-gradient(135deg,#1a237e,#303f9f); color:#fff; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; }
+  .tlib-hdr h3 { font-size:15px; }
+  .tlib-close { background:none; border:none; color:#fff; font-size:20px; cursor:pointer; padding:0 4px; }
+  .tlib-body { display:flex; flex:1; overflow:hidden; }
+  .tlib-list { width:200px; min-width:200px; border-right:1px solid #e0e0e0; overflow-y:auto; background:#f8f9fa; }
+  .tlib-list-item { padding:10px 14px; border-bottom:1px solid #ececec; cursor:pointer; font-size:12px; display:flex; justify-content:space-between; align-items:center; }
+  .tlib-list-item:hover { background:#e8eaf6; }
+  .tlib-list-item.active { background:#1a237e; color:#fff; }
+  .tlib-list-item .dot { width:8px; height:8px; border-radius:50%; background:#cccccc; flex-shrink:0; margin-left:6px; }
+  .tlib-list-item.has-content .dot { background:#2e7d32; }
+  .tlib-list-item.cloud-newer .dot { background:#1565c0; box-shadow:0 0 0 3px rgba(21,101,192,.15); }
+  .tlib-edit { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  .tlib-edit-hdr { padding:10px 14px; background:#fafafa; border-bottom:1px solid #e0e0e0; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .tlib-edit-hdr h4 { flex:1; font-size:13px; color:#1a237e; }
+  .tlib-edit-meta { font-size:10px; color:#888; font-style:italic; margin-right:8px; }
+  .tlib-textarea { flex:1; width:100%; border:none; padding:14px; font-family:'Consolas','Courier New',monospace; font-size:12px; resize:none; outline:none; line-height:1.55; color:#222; }
+  .tlib-actions { padding:10px 14px; background:#fafafa; border-top:1px solid #e0e0e0; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .tlib-btn { padding:7px 14px; border:none; border-radius:5px; font-size:12px; font-weight:700; cursor:pointer; }
+  .tlib-btn-save   { background:#1565c0; color:#fff; }
+  .tlib-btn-cloud  { background:#2e7d32; color:#fff; }
+  .tlib-btn-default { background:#757575; color:#fff; }
+  .tlib-btn-delete { background:#c62828; color:#fff; }
+  .tlib-btn-preview { background:#ff9800; color:#fff; }
+  .tlib-msg { font-size:11px; color:#2e7d32; font-weight:600; margin-left:8px; }
+  .tlib-msg.err { color:#c62828; }
+  .tlib-add { padding:10px 14px; border-top:1px solid #e0e0e0; background:#fafafa; display:flex; gap:6px; }
+  .tlib-add input { flex:1; padding:6px 10px; border:1px solid #cccccc; border-radius:4px; font-size:12px; text-transform:uppercase; }
+  .tlib-add button { padding:6px 12px; background:#1a237e; color:#fff; border:none; border-radius:4px; font-size:11px; cursor:pointer; }
+
+  /* Open-templates button (added next to the existing Templates gear) */
+  .tlib-trigger { margin-left:6px; }
+</style>
+
+<!-- Template Library Modal markup -->
+<div class="tlib-overlay" id="tlibOverlay">
+  <div class="tlib-modal">
+    <div class="tlib-hdr">
+      <h3><i class="fas fa-book-medical"></i> Template Library — Markdown</h3>
+      <button class="tlib-close" onclick="tlibClose()">✕</button>
+    </div>
+    <div class="tlib-body">
+      <div class="tlib-list" id="tlibList"></div>
+      <div class="tlib-edit">
+        <div class="tlib-edit-hdr">
+          <h4 id="tlibEditTitle">Select a scan code…</h4>
+          <span class="tlib-edit-meta" id="tlibEditMeta"></span>
+        </div>
+        <textarea class="tlib-textarea" id="tlibTextarea" placeholder="Select a scan code from the list to edit its template, or type a new code below."></textarea>
+        <div class="tlib-actions">
+          <button class="tlib-btn tlib-btn-save" onclick="tlibSaveLocal()"><i class="fas fa-save"></i> Save (this PC)</button>
+          <button class="tlib-btn tlib-btn-cloud" onclick="tlibPushCloud()"><i class="fas fa-cloud-upload-alt"></i> Push to Cloud</button>
+          <button class="tlib-btn tlib-btn-default" onclick="tlibLoadDefault()"><i class="fas fa-undo"></i> Reset to Default</button>
+          <button class="tlib-btn tlib-btn-preview" onclick="tlibPreview()"><i class="fas fa-eye"></i> Preview .docx</button>
+          <button class="tlib-btn tlib-btn-delete" onclick="tlibDelete()"><i class="fas fa-trash"></i> Delete</button>
+          <span class="tlib-msg" id="tlibMsg"></span>
+        </div>
+        <div class="tlib-add">
+          <input id="tlibNewCode" placeholder="Add new scan code (e.g. RAD)" maxlength="8" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+          <button onclick="tlibAddNew()">+ Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  MARKDOWN TEMPLATE PARSER + LIBRARY MANAGER
+// ════════════════════════════════════════════════════════════════════
+
+const TLIB_STORAGE_PREFIX = 'drlgk_tpl_md_';
+const TLIB_LAST_SYNC_KEY = 'drlgk_tpl_lastsync';
+
+// All scan codes from your billing system
+const TLIB_ALL_CODES = [
+  // OBG
+  'EP','NT','FS','GS','GD','AS','FE','AE','FN',
+  // General
+  'ABD','PEL','AP','KUB','NK','BR1','BR2','MSK','SCR','EYE','CHT',
+  // Doppler
+  'ADS','VDS','ADB','VDB','AVS','ADA','AVB','CVD','RAD','PVD','PEN'
+];
+
+// ─── BUILT-IN DEFAULT TEMPLATES (bundled — load if cloud unavailable & no local) ───
+const TLIB_DEFAULTS = {
+  // Each filled below — using a function to keep the literal block clean
+};
+
+// Theme palette mapping for indication banner + study title
+const TLIB_THEMES = {
+  saffron:  { bg:'FFF7E0', fg:'8A6500' },
+  rose:     { bg:'FFF0F0', fg:'8B2842' },
+  mint:     { bg:'F0FAF0', fg:'2D6A4F' },
+  lavender: { bg:'F4F0FF', fg:'5E35B1' },
+  azure:    { bg:'F0F7FF', fg:'1565C0' },
+  peach:    { bg:'FFF4E6', fg:'A04500' }
+};
+
+// ─── PARSER ─────────────────────────────────────────────────────────
+// Inline markup → array of TextRun
+function tlibParseInline(text, baseSize) {
+  const size = baseSize || 21;
+  const runs = [];
+  if (!text) return runs;
+  const tokens = text.split(/(\*\*[^\*]+\*\*|\*[^\*]+\*|_{3,})/g);
+  for (const tok of tokens) {
+    if (!tok) continue;
+    if (/^_{3,}$/.test(tok)) {
+      const len = Math.max(4, Math.floor(tok.length * 1.5));
+      runs.push(new docx.TextRun({ text: '\u00A0'.repeat(len), underline: { type:'single', color:'666666' }, size, font:'Calibri' }));
+    } else if (/^\*\*[^\*]+\*\*$/.test(tok)) {
+      runs.push(new docx.TextRun({ text: tok.slice(2,-2), bold:true, size, font:'Calibri', color:'111111' }));
+    } else if (/^\*[^\*]+\*$/.test(tok)) {
+      runs.push(new docx.TextRun({ text: tok.slice(1,-1), italics:true, size, font:'Cambria', color:'111111' }));
+    } else {
+      runs.push(new docx.TextRun({ text: tok, size, font:'Calibri', color:'111111' }));
+    }
+  }
+  return runs;
+}
+
+// Block builders
+function tlibBlock_bigSecHdr(text) {
+  return new docx.Paragraph({
+    spacing: { before:160, after:60, line:280 },
+    border: { bottom: { style:docx.BorderStyle.SINGLE, size:8, color:'1A237E' } },
+    children: [new docx.TextRun({ text:text.toUpperCase(), bold:true, size:28, font:'Calibri', color:'1A237E', characterSpacing:40 })]
+  });
+}
+function tlibBlock_secHdr(text) {
+  return new docx.Paragraph({
+    spacing: { before:140, after:50, line:264 },
+    border: { bottom: { style:docx.BorderStyle.SINGLE, size:6, color:'1A237E' } },
+    children: [new docx.TextRun({ text:text.toUpperCase(), bold:true, size:23, font:'Calibri', color:'1A237E', characterSpacing:30 })]
+  });
+}
+function tlibBlock_subHdr(text) {
+  return new docx.Paragraph({
+    spacing: { before:80, after:20, line:260 },
+    children: [new docx.TextRun({ text, bold:true, size:21, font:'Calibri', color:'6A1B9A', italics:true })]
+  });
+}
+function tlibBlock_findingLine(label, body) {
+  const children = [new docx.TextRun({ text: label + ': ', bold:true, size:21, font:'Calibri', color:'1A237E' })];
+  tlibParseInline(body, 21).forEach(r => children.push(r));
+  return new docx.Paragraph({ spacing:{ before:30, after:30, line:280 }, children });
+}
+function tlibBlock_bullet(text) {
+  const children = [new docx.TextRun({ text:'•  ', bold:true, size:21, color:'6A1B9A' })];
+  tlibParseInline(text, 21).forEach(r => children.push(r));
+  return new docx.Paragraph({ spacing:{ before:30, after:30, line:280 }, indent:{ left:200 }, children });
+}
+function tlibBlock_diagBullet(text) {
+  const children = [new docx.TextRun({ text:'▸  ', bold:true, size:28, color:'6A1B9A' })];
+  // bigger size + green for bold
+  const tokens = text.split(/(\*\*[^\*]+\*\*|\*[^\*]+\*|_{3,})/g);
+  for (const tok of tokens) {
+    if (!tok) continue;
+    if (/^_{3,}$/.test(tok)) {
+      const len = Math.max(4, Math.floor(tok.length * 1.5));
+      children.push(new docx.TextRun({ text:'\u00A0'.repeat(len), underline:{type:'single',color:'666666'}, size:26, font:'Calibri' }));
+    } else if (/^\*\*[^\*]+\*\*$/.test(tok)) {
+      children.push(new docx.TextRun({ text: tok.slice(2,-2), bold:true, size:26, font:'Calibri', color:'2E7D32' }));
+    } else if (/^\*[^\*]+\*$/.test(tok)) {
+      children.push(new docx.TextRun({ text: tok.slice(1,-1), italics:true, size:26, font:'Cambria', color:'111111' }));
+    } else {
+      children.push(new docx.TextRun({ text: tok, size:26, font:'Calibri', color:'111111' }));
+    }
+  }
+  return new docx.Paragraph({ spacing:{ before:60, after:60, line:320 }, indent:{ left:200 }, children });
+}
+function tlibBlock_plain(text) {
+  return new docx.Paragraph({ spacing:{ before:30, after:30, line:280 }, children: tlibParseInline(text, 21) });
+}
+function tlibBlock_empty() {
+  return new docx.Paragraph({ spacing:{ before:0, after:0, line:240 }, children:[new docx.TextRun({ text:'', size:16 })] });
+}
+function tlibBlock_disclaimer(text) {
+  return [
+    new docx.Paragraph({
+      spacing:{ before:100, after:30, line:240 },
+      border:{ top:{ style:docx.BorderStyle.DASHED, size:4, color:'AAAAAA' } },
+      shading:{ fill:'FAFAFA', type:docx.ShadingType.CLEAR },
+      children:[
+        new docx.TextRun({ text:'⚕  ', size:18, color:'1A237E' }),
+        new docx.TextRun({ text:'Disclaimer', bold:true, size:18, font:'Calibri', color:'1A237E' })
+      ]
+    }),
+    new docx.Paragraph({ spacing:{ before:0, after:30, line:280 }, children: tlibParseInline(text, 19) })
+  ];
+}
+function tlibBlock_pageBreak() {
+  return new docx.Paragraph({ children:[new docx.TextRun({ text:'', break:1 })], pageBreakBefore:true });
+}
+
+// Main parser
+function tlibParse(md) {
+  const lines = md.split(/\r?\n/);
+  const meta = {};
+  const elems = [];
+  const includes = [];  // collect [include: name] for host to resolve
+  let i = 0;
+
+  // Metadata block
+  while (i < lines.length) {
+    const t = lines[i].trim();
+    if (t === '') { i++; continue; }
+    const m = t.match(/^\[(\w+):\s*(.+?)\]$/);
+    if (m) { meta[m[1]] = m[2].trim(); i++; }
+    else break;
+  }
+
+  // Body
+  while (i < lines.length) {
+    const line = lines[i];
+    const t = line.trim();
+
+    if (t === '') { elems.push(tlibBlock_empty()); i++; continue; }
+
+    // [disclaimer] — collect until next # or section directive
+    if (t === '[disclaimer]') {
+      i++;
+      const buf = [];
+      while (i < lines.length) {
+        const dt = lines[i].trim();
+        if (/^#{1,3}\s/.test(dt) || /^\[.+\]$/.test(dt)) break;
+        if (dt) buf.push(dt);
+        i++;
+      }
+      tlibBlock_disclaimer(buf.join(' ')).forEach(e => elems.push(e));
+      continue;
+    }
+
+    // [pageBreak]
+    if (t === '[pageBreak]') { elems.push(tlibBlock_pageBreak()); i++; continue; }
+
+    // [include: name] — flag for host resolution
+    const incM = t.match(/^\[include:\s*([\w\-]+)\]$/);
+    if (incM) { includes.push({ name: incM[1], pos: elems.length }); i++; continue; }
+
+    // [gaTable], [biometryTable], [ntMarkersTable], [fetalEnvTable] — built-in tables
+    const tblM = t.match(/^\[(\w+Table)\]$/);
+    if (tblM) { includes.push({ name: tblM[1], pos: elems.length }); i++; continue; }
+
+    // Headings
+    if (/^#\s/.test(t))   { elems.push(tlibBlock_bigSecHdr(t.replace(/^#\s+/, '')));  i++; continue; }
+    if (/^##\s/.test(t))  { elems.push(tlibBlock_secHdr(t.replace(/^##\s+/, '')));    i++; continue; }
+    if (/^###\s/.test(t)) { elems.push(tlibBlock_subHdr(t.replace(/^###\s+/, '')));   i++; continue; }
+
+    // Bullets
+    if (/^▸\s/.test(t))      { elems.push(tlibBlock_diagBullet(t.replace(/^▸\s+/, ''))); i++; continue; }
+    if (/^[•\-]\s/.test(t))  { elems.push(tlibBlock_bullet(t.replace(/^[•\-]\s+/, ''))); i++; continue; }
+
+    // Finding line: "Label: body"
+    const fl = t.match(/^([A-Z][^:]{1,60}):\s+(.+)$/);
+    if (fl) { elems.push(tlibBlock_findingLine(fl[1], fl[2])); i++; continue; }
+
+    elems.push(tlibBlock_plain(t));
+    i++;
+  }
+
+  return { meta, elems, includes };
+}
+
+// ─── STORAGE LAYER ──────────────────────────────────────────────────
+function tlibGetLocal(code) {
+  return localStorage.getItem(TLIB_STORAGE_PREFIX + code) || null;
+}
+function tlibSetLocal(code, md) {
+  localStorage.setItem(TLIB_STORAGE_PREFIX + code, md);
+}
+function tlibDelLocal(code) {
+  localStorage.removeItem(TLIB_STORAGE_PREFIX + code);
+}
+function tlibGetDefault(code) {
+  return TLIB_DEFAULTS[code] || null;
+}
+
+// Resolve template: cloud-cached local → default → null
+function tlibResolve(code) {
+  const local = tlibGetLocal(code);
+  if (local) return { source:'local', md: local };
+  const def = tlibGetDefault(code);
+  if (def) return { source:'default', md: def };
+  return null;
+}
+
+// ─── CLOUD SYNC (uses existing apiCall helper from reporter.html) ───
+async function tlibSyncFromCloud() {
+  if (typeof apiCall !== 'function') { console.warn('apiCall not available — cloud sync skipped'); return; }
+  try {
+    const list = await apiCall('listTemplates', {});
+    if (!list || !list.success || !list.templates) return;
+    let pulled = 0;
+    for (const meta of list.templates) {
+      const code = (meta.scan_code || '').toUpperCase();
+      if (!code) continue;
+      // Pull each one (lightweight — only the changed body)
+      const localTime = localStorage.getItem(TLIB_STORAGE_PREFIX + code + '_updated_at') || '';
+      if (meta.updated_at !== localTime) {
+        const tpl = await apiCall('getTemplate', { scan_code: code });
+        if (tpl && tpl.found && tpl.markdown) {
+          tlibSetLocal(code, tpl.markdown);
+          localStorage.setItem(TLIB_STORAGE_PREFIX + code + '_updated_at', tpl.updated_at || '');
+          pulled++;
+        }
+      }
+    }
+    localStorage.setItem(TLIB_LAST_SYNC_KEY, new Date().toISOString());
+    if (pulled > 0) console.log('[tlib] synced ' + pulled + ' template(s) from cloud');
+  } catch (e) { console.warn('[tlib] cloud sync failed:', e); }
+}
+
+async function tlibPushOne(code, md) {
+  if (typeof apiCall !== 'function') throw new Error('apiCall not available');
+  const r = await apiCall('saveTemplate', { scan_code: code, markdown: md });
+  if (!r || !r.success) throw new Error(r && r.error ? r.error : 'cloud save failed');
+  localStorage.setItem(TLIB_STORAGE_PREFIX + code + '_updated_at', new Date().toISOString());
+  return r;
+}
+
+// ─── UI: render scan-code list + handle clicks ──────────────────────
+let tlibCurrentCode = null;
+
+function tlibOpen() {
+  document.getElementById('tlibOverlay').classList.add('open');
+  tlibRenderList();
+  tlibSyncFromCloud().then(() => tlibRenderList()).catch(()=>{});
+}
+function tlibClose() {
+  document.getElementById('tlibOverlay').classList.remove('open');
+}
+
+function tlibRenderList() {
+  const list = document.getElementById('tlibList');
+  // Collect codes: built-in + any custom ones in localStorage
+  const all = new Set(TLIB_ALL_CODES);
+  Object.keys(localStorage).forEach(k => {
+    if (k.startsWith(TLIB_STORAGE_PREFIX) && !k.endsWith('_updated_at')) {
+      const code = k.replace(TLIB_STORAGE_PREFIX, '');
+      if (code) all.add(code);
+    }
+  });
+  list.innerHTML = '';
+  Array.from(all).sort().forEach(code => {
+    const local = tlibGetLocal(code);
+    const def = tlibGetDefault(code);
+    const item = document.createElement('div');
+    item.className = 'tlib-list-item';
+    if (local || def) item.classList.add('has-content');
+    if (code === tlibCurrentCode) item.classList.add('active');
+    item.onclick = () => tlibSelect(code);
+    item.innerHTML = '<span>' + code + '</span><span class="dot"></span>';
+    list.appendChild(item);
+  });
+}
+
+function tlibSelect(code) {
+  tlibCurrentCode = code;
+  const ta = document.getElementById('tlibTextarea');
+  const title = document.getElementById('tlibEditTitle');
+  const meta = document.getElementById('tlibEditMeta');
+  const local = tlibGetLocal(code);
+  const def = tlibGetDefault(code);
+  const updated = localStorage.getItem(TLIB_STORAGE_PREFIX + code + '_updated_at');
+  ta.value = local || def || '[scanCode: ' + code + ']\n[title: ULTRASOUND ' + code + ' STUDY]\n[theme: saffron]\n[depth: standard]\n\n## Findings\n\n# Impression\n\n▸ **Normal study.**\n\n## Advice\n\n• Clinical correlation.\n\n[disclaimer]\nAdd appropriate disclaimer here.\n';
+  title.textContent = 'Editing: ' + code + (local ? ' (local edits)' : def ? ' (default)' : ' (new)');
+  meta.textContent = updated ? 'last cloud-sync: ' + new Date(updated).toLocaleString() : 'never synced';
+  tlibRenderList();
+}
+
+function tlibSaveLocal() {
+  if (!tlibCurrentCode) return;
+  const md = document.getElementById('tlibTextarea').value;
+  tlibSetLocal(tlibCurrentCode, md);
+  tlibFlash('✓ Saved locally');
+  tlibRenderList();
+}
+async function tlibPushCloud() {
+  if (!tlibCurrentCode) return;
+  const md = document.getElementById('tlibTextarea').value;
+  tlibSetLocal(tlibCurrentCode, md);
+  tlibFlash('Pushing to cloud…', false);
+  try {
+    await tlibPushOne(tlibCurrentCode, md);
+    tlibFlash('✓ Saved locally + pushed to cloud (v' + 'updated)');
+  } catch (e) { tlibFlash('Cloud push failed: ' + e.message, true); }
+  tlibRenderList();
+}
+function tlibLoadDefault() {
+  if (!tlibCurrentCode) return;
+  const def = tlibGetDefault(tlibCurrentCode);
+  if (!def) { tlibFlash('No default available for ' + tlibCurrentCode, true); return; }
+  if (!confirm('Reset ' + tlibCurrentCode + ' to its built-in default? Local edits will be lost.')) return;
+  document.getElementById('tlibTextarea').value = def;
+  tlibSetLocal(tlibCurrentCode, def);
+  tlibFlash('✓ Reset to default');
+  tlibRenderList();
+}
+function tlibDelete() {
+  if (!tlibCurrentCode) return;
+  if (!confirm('Delete ' + tlibCurrentCode + ' template (local copy only)?')) return;
+  tlibDelLocal(tlibCurrentCode);
+  tlibFlash('✓ Deleted local copy');
+  tlibSelect(tlibCurrentCode);
+}
+function tlibAddNew() {
+  const code = document.getElementById('tlibNewCode').value.trim().toUpperCase();
+  if (!code) return;
+  document.getElementById('tlibNewCode').value = '';
+  tlibSelect(code);
+  tlibRenderList();
+}
+function tlibFlash(msg, isErr) {
+  const el = document.getElementById('tlibMsg');
+  el.textContent = msg;
+  el.classList.toggle('err', !!isErr);
+  setTimeout(() => { el.textContent = ''; }, 3500);
+}
+
+async function tlibPreview() {
+  if (!tlibCurrentCode) return;
+  const md = document.getElementById('tlibTextarea').value;
+  tlibFlash('Generating preview…');
+  try {
+    // Build a fake fields object with placeholder data
+    const fake = {
+      patientName:'Preview Patient', age:'30', sex:'F',
+      phone:'9876543210', address:'Sample Address',
+      referralDoctor:'Sample Doctor', scanCode: tlibCurrentCode,
+      scanType:'Preview Study', token:'PREVIEW',
+      serial:'PREVIEW', dateTime: new Date().toLocaleString(),
+      paymentMethod:'Cash', netPaid:0, totalPayable:0, pending:0, indication:'Preview run'
+    };
+    const blob = await tlibBuildPreviewDoc(md, fake);
+    saveAs(blob, tlibCurrentCode + '_preview.docx');
+    tlibFlash('✓ Preview downloaded');
+  } catch (e) { tlibFlash('Preview failed: ' + e.message, true); console.error(e); }
+}
+
+// Self-contained preview builder (uses parser + minimal header/footer)
+async function tlibBuildPreviewDoc(md, fields) {
+  const { meta, elems } = tlibParse(md);
+  const theme = TLIB_THEMES[meta.theme || 'saffron'] || TLIB_THEMES.saffron;
+  const studyTitle = meta.title || 'ULTRASOUND STUDY';
+  const ageSex = meta.ageSex === 'Male' ? '<Age> / Male' : meta.ageSex === 'Female' ? '<Age> / Female' : (fields.age + ' / ' + fields.sex);
+
+  const headerElems = [
+    new docx.Paragraph({
+      alignment: docx.AlignmentType.CENTER,
+      spacing:{before:0,after:40,line:280},
+      children:[
+        new docx.TextRun({ text:'─── ⚕ ─── ', font:'Calibri', size:28, color:'1A237E' }),
+        new docx.TextRun({ text:'Dr L G Krishna Ultrasound Clinic, ', font:'Calibri', size:32, bold:true, color:'111111' }),
+        new docx.TextRun({ text:'Sirsi', font:'Calibri', size:32, bold:true, color:'6A1B9A' }),
+        new docx.TextRun({ text:' ─── ⚕ ───', font:'Calibri', size:28, color:'1A237E' })
+      ]
+    }),
+    new docx.Paragraph({
+      alignment: docx.AlignmentType.CENTER,
+      spacing:{before:0,after:0,line:220},
+      children:[new docx.TextRun({ text:'Diagnostic Ultrasonography Centre · PCPNDT Reg. No. 115 (Uttara Kannada) · Dr Satish B, MBBS·DMRD, KMC Reg. 69786', size:16, italics:true, color:'666666' })]
+    }),
+    new docx.Paragraph({
+      spacing:{before:80,after:0},
+      border:{bottom:{style:docx.BorderStyle.THICK, size:12, color:'111111'}},
+      children:[new docx.TextRun({ text:'', size:4 })]
+    }),
+    new docx.Paragraph({ spacing:{before:100,after:0}, children:[
+      new docx.TextRun({ text:'Patient: ', bold:true, size:20, color:'555555' }),
+      new docx.TextRun({ text: fields.patientName, bold:true, size:22, color:'1A237E' }),
+      new docx.TextRun({ text:'   Age/Sex: ', bold:true, size:20, color:'555555' }),
+      new docx.TextRun({ text: ageSex, bold:true, size:22, color:'1A237E' }),
+      new docx.TextRun({ text:'   Date: ', bold:true, size:20, color:'555555' }),
+      new docx.TextRun({ text: new Date().toLocaleDateString('en-GB'), bold:true, size:22, color:'1A237E' })
+    ]}),
+    new docx.Paragraph({
+      spacing:{before:60,after:0},
+      shading:{fill: theme.bg, type: docx.ShadingType.CLEAR},
+      border:{top:{style:docx.BorderStyle.SINGLE, size:3, color:'CCCCCC'}, bottom:{style:docx.BorderStyle.SINGLE, size:3, color:'CCCCCC'}},
+      children:[
+        new docx.TextRun({ text:' Indication: ', bold:true, size:20, color: theme.fg }),
+        new docx.TextRun({ text: fields.indication || 'Preview', italics:true, size:22, color: theme.fg })
+      ]
+    }),
+    new docx.Paragraph({
+      alignment: docx.AlignmentType.CENTER,
+      spacing:{before:80,after:0},
+      shading:{fill: theme.bg, type: docx.ShadingType.CLEAR},
+      border:{top:{style:docx.BorderStyle.SINGLE, size:8, color:'1A237E'}, bottom:{style:docx.BorderStyle.SINGLE, size:8, color:'1A237E'}},
+      children:[new docx.TextRun({ text: studyTitle, bold:true, size:26, color: theme.fg, characterSpacing:30 })]
+    }),
+    tlibBlock_empty()
+  ];
+
+  const doc = new docx.Document({
+    sections: [{
+      properties: { page: { size:{ width:11906, height:16838 }, margin:{ top:720, right:567, bottom:720, left:567 } } },
+      footers: {
+        default: new docx.Footer({
+          children: [new docx.Paragraph({
+            alignment: docx.AlignmentType.CENTER,
+            border:{ top:{ style:docx.BorderStyle.SINGLE, size:4, color:'1A237E' } },
+            spacing:{ before:60, after:0 },
+            children:[
+              new docx.TextRun({ text:'Dr Satish B · MBBS · DMRD · KMC Reg. 69786', size:16, color:'555555' })
+            ]
+          })]
+        })
+      },
+      children: [...headerElems, ...elems]
+    }]
+  });
+  return await docx.Packer.toBlob(doc);
+}
+
+// ─── INSTALLATION HOOK ──────────────────────────────────────────────
+// Adds a "Library" button next to the existing "Templates" gear in the header.
+function tlibInstall() {
+  const gear = document.querySelector('.gear-btn');
+  if (!gear) { console.warn('[tlib] gear-btn not found, skipping button install'); return; }
+  if (document.getElementById('tlibTriggerBtn')) return;
+  const b = document.createElement('button');
+  b.id = 'tlibTriggerBtn';
+  b.className = 'gear-btn tlib-trigger';
+  b.innerHTML = '<i class="fas fa-book-medical"></i> Library';
+  b.onclick = tlibOpen;
+  gear.parentNode.insertBefore(b, gear.nextSibling);
+}
+
+// ─── EXPOSE A LOOKUP FOR generateWordReport TO USE ─────────────────
+// In reporter.html's generateWordReport, you can now call:
+//   const customMd = window.tlibLookup(fields.scanCode);
+//   if (customMd) { ...use parsed elems instead of buildXXX()... }
+window.tlibLookup = function(scanCode) {
+  if (!scanCode) return null;
+  const r = tlibResolve(scanCode.toUpperCase());
+  return r ? r.md : null;
+};
+window.tlibParse = tlibParse;
+
+// Auto-init after DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => { tlibInstall(); tlibSyncFromCloud(); });
+} else {
+  setTimeout(() => { tlibInstall(); tlibSyncFromCloud(); }, 500);
+}
+</script>
+
 
 </body>

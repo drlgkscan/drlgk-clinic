@@ -2637,6 +2637,8 @@ function tlibResolve(code) {
 // ─── CLOUD SYNC (uses existing apiCall helper from reporter.html) ───
 async function tlibSyncFromCloud() {
   if (typeof apiCall !== 'function') { console.warn('apiCall not available — cloud sync skipped'); return; }
+  // ── Guard: skip sync entirely if no device is paired (otherwise empty device_id → device_revoked screen flip) ──
+  if (typeof getStoredDevice !== 'function' || !getStoredDevice()) { return; }
   try {
     const list = await apiCall('listTemplates', {});
     if (!list || !list.success || !list.templates) return;

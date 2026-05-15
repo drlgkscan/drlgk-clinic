@@ -896,13 +896,17 @@ async function generateBill() {
       advance: Number(document.getElementById('advanceAmount').value) || 0,
       isPreg, lmp: document.getElementById('lmpDate').value || '',
       referrerName: document.getElementById('referringDoctor').options[document.getElementById('referringDoctor').selectedIndex].textContent,
-      photoDataUrl: state.photoDataUrl
+      photoDataUrl: state.photoDataUrl,
+      photoUrl: photoUrl
     });
 
     const today = new Date();
     const yyyy = today.getFullYear(), mm = String(today.getMonth()+1).padStart(2,'0'), dd = String(today.getDate()).padStart(2,'0');
     const folder = `bills/${yyyy}/${mm}/${dd}`;
-    const fname = `${billRef}_${name.replace(/[^a-zA-Z0-9]/g,'_').slice(0,30)}.pdf`;
+    // ── Structured filename: Name_ScanCode_YYYY-MM-DD_Serial.pdf  (matches report naming convention) ──
+    const safeName = name.replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
+    const dateStr = yyyy + '-' + mm + '-' + dd;
+    const fname = `${safeName}_${scanCode}_${dateStr}_${serial}.pdf`;
     const reader = new FileReader();
     const base64 = await new Promise((res, rej) => {
       reader.onload = () => res(reader.result.split(',')[1]);
@@ -913,7 +917,7 @@ async function generateBill() {
       await api('linkVisitToFile', { visit_id: visitResult.visit_id, file_type: 'bill_pdf', url: up.url });
     }
 
-    state.lastBill = { visitId: visitResult.visit_id, billRef, pdfBlob, pdfUrl: up.url, name, phone };
+    state.lastBill = { visitId: visitResult.visit_id, billRef, pdfBlob, pdfUrl: up.url, name, phone, fname };
     document.getElementById('finalBillRef').textContent = billRef;
     document.getElementById('finalVisitId').textContent = visitResult.visit_id;
     document.getElementById('patientPhoneLabel').textContent = phone;
@@ -1062,7 +1066,7 @@ async function buildBillPdf(d) {
   }
   y += 8;
 
-  const dataLine = `##DATA##${d.name}|${d.age}|${d.sex}|${d.phone}|${(d.address||'').replace(/\|/g,',')}|${d.referrerName}|${d.isPreg?'Yes':'No'}|${d.lmp||''}||${d.scanCode}|${d.scanType}|${d.scanPrice}|${d.hasAdvance?d.advance:0}|${d.netPaid}|${d.additional}|${d.discount}|${d.total}|${d.netPaid}|${d.pending}|${d.serial}|${new Date().toLocaleString('en-IN')}|${d.paymentMode}|${d.billRef}##END##`;
+  const dataLine = `##DATA##${d.name}|${d.age}|${d.sex}|${d.phone}|${(d.address||'').replace(/\|/g,',')}|${d.referrerName}|${d.isPreg?'Yes':'No'}|${d.lmp||''}||${d.scanCode}|${d.scanType}|${d.scanPrice}|${d.hasAdvance?d.advance:0}|${d.netPaid}|${d.additional}|${d.discount}|${d.total}|${d.netPaid}|${d.pending}|${d.serial}|${new Date().toLocaleString('en-IN')}|${d.paymentMode}|${d.billRef}|${d.photoUrl||''}##END##`;
   doc.setTextColor(255, 255, 255); doc.setFontSize(0.5);
   doc.text(dataLine, 10, y);
   doc.setTextColor(28,38,54);
@@ -1121,7 +1125,7 @@ function downloadBillPdf() {
   if (!state.lastBill) return;
   const url = URL.createObjectURL(state.lastBill.pdfBlob);
   const a = document.createElement('a');
-  a.href = url; a.download = state.lastBill.billRef + '.pdf'; a.click();
+  a.href = url; a.download = state.lastBill.fname || (state.lastBill.billRef + '.pdf'); a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function shareWhatsAppToPatient() {

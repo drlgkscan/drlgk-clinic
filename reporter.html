@@ -613,7 +613,9 @@ async function processPDF() {
         discount:parseFloat(p[15])||0, totalPayable:parseFloat(p[16])||0,
         netPaid:parseFloat(p[17])||0, pending:parseFloat(p[18])||0,
         serial:p[19]||'', dateTime:p[20]||'', paymentMethod:p[21]||'Cash',
-        token:p[22]||''
+        token:p[22]||'',
+        // NEW: photo_url at slot 23 (newer bills only — old bills won't have it, that's fine)
+        _patient_photo_url: p[23] || ''
       };
     } else { fields=parseFallback(fullText); }
 
@@ -1090,19 +1092,9 @@ async function generateWordReport(fields) {
     ctx.fillText(initials, size/2, size/2 + 5);
     return canvas;
   }
-  if (!patientPhotoData) {
-    try {
-      const initials = buildInitials(fields.patientName);
-      const canvas = makeInitialsCircle(initials, pal.main);
-      const dataUrl = canvas.toDataURL('image/png');
-      const b64 = dataUrl.split(',')[1];
-      const binStr = atob(b64);
-      const buf = new Uint8Array(binStr.length);
-      for (let i = 0; i < binStr.length; i++) buf[i] = binStr.charCodeAt(i);
-      patientPhotoData = buf;
-      patientPhotoType = 'png';
-    } catch (e) { console.warn('Initials canvas failed:', e); }
-  }
+  // ── No photo? Leave patientPhotoData null. Header table will detect this
+  //    and skip the photo cell entirely (no more big ink-wasting initials circle). ──
+  // (Initials-circle fallback removed — was producing ~24mm coloured block per report.)
 
   // ─── HEADER LAYOUT (v23) — DXA twip widths matching FULL_W ───
   // FULL_W = 10772 twips (matches A4 with 567+567 margins)
@@ -1885,13 +1877,54 @@ async function addWalkin(){
 
 async function loadQueue(){
   try{
-    const d=await apiGet('/api/queue');
-    queueList=d.list||[];
+    // ── A. Existing booking queue (Firebase / /api/queue) ──
+    let bookingQ = [];
+    try {
+      const d = await apiGet('/api/queue');
+      bookingQ = d.list || [];
+    } catch(e) { console.warn('Booking queue fetch failed', e); }
+
+    // ── B. NEW: Today's billed visits from Apps Script (sync from billing.html) ──
+    let billedQ = [];
+    try {
+      if (typeof apiCall === 'function' && typeof getStoredDevice === 'function' && getStoredDevice()) {
+        const visits = await apiCall('getTodaysVisits', {});
+        if (Array.isArray(visits)) {
+          billedQ = visits.map(v => ({
+            token: v.token || '',
+            name: v.name || '',
+            phone: v.phone || '',
+            scan: v.scan_type || '',
+            scanCode: v.scan_code || '',
+            billRef: v.bill_ref || '',
+            visitId: v.visit_id || '',
+            age: v.age || '',
+            sex: v.sex || '',
+            address: v.address || '',
+            lmp: v.lmp || '',
+            pregnancy: v.is_pregnancy ? 'Yes' : 'No',
+            _patient_photo_url: v.photo_url || '',
+            status: (v.report_status === 'Delivered' || v.report_status === 'Ready') ? 'done' : 'waiting',
+            _from: 'billing'
+          }));
+        }
+      }
+    } catch(e) { console.warn('getTodaysVisits failed', e); }
+
+    // ── C. Merge — dedupe by phone (preferred) or billRef ──
+    const merged = [...bookingQ];
+    billedQ.forEach(b => {
+      const dup = merged.find(m =>
+        (b.phone && m.phone && String(m.phone) === String(b.phone)) ||
+        (b.billRef && m.billRef && m.billRef === b.billRef)
+      );
+      if (!dup) merged.push(b);
+    });
+    queueList = merged;
+
     const pending=queueList.filter(p=>p.status!=='done').length;
     const done=queueList.filter(p=>p.status==='done').length;
-    // Badge shows only non-done (pending)
     document.getElementById('queueCount').textContent=pending||queueList.length;
-    // Session recovery banner
     const banner=document.getElementById('recoveryBanner');
     if(banner){
       if(done>0 && queueList.length>0){
@@ -1924,10 +1957,11 @@ async function loadQueue(){
       const op=isDone?'.4':'1';
       const emergBadge=isEmerg?'<span style="font-size:9px;background:#dc262622;color:#f87171;padding:1px 6px;border-radius:8px;margin-left:4px">!</span>':'';
       const refBadge=p.billRef?`<span style="font-size:8px;color:#1A7A5E;opacity:.7">${p.billRef}</span>`:'';
+      const billingBadge=p._from==='billing'?'<span style="font-size:8px;background:#16a34a22;color:#86efac;padding:1px 5px;border-radius:6px;margin-left:4px">bill</span>':'';
       const strike=isDone?'text-decoration:line-through;':'';
       return `<div onclick="loadFromQueue(${i})" style="background:${cardBg};border-radius:7px;padding:9px 10px;margin-bottom:7px;cursor:pointer;border-left:3px solid ${isEmerg?'#ef4444':statusColor};opacity:${op};transition:all .15s" onmouseover="this.style.opacity='${isDone?'.55':'.8'}'" onmouseout="this.style.opacity='${op}'">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-          <span style="font-size:15px;font-weight:900;color:${isEmerg?'#f87171':statusColor};${strike}">T-${p.token||i+1}${emergBadge}</span>
+          <span style="font-size:15px;font-weight:900;color:${isEmerg?'#f87171':statusColor};${strike}">T-${p.token||i+1}${emergBadge}${billingBadge}</span>
           <span style="font-size:9px;background:${statusColor}22;color:${statusColor};padding:1px 6px;border-radius:8px">${statusLabel}</span>
         </div>
         <div style="font-size:12px;color:${isDone?'#475569':'#f1f5f9'};font-weight:600;${strike}">${p.name||'Patient'}</div>
@@ -1947,18 +1981,22 @@ function loadFromQueue(i){
   const fields={
     patientName:p.name||'', age:p.age||'', sex:p.sex||'',
     phone:p.phone||'', address:p.address||'', referralDoctor:p.refdr||'',
-    pregnancy:p.pregnancy||'No', lmp:'', edd:'',
-    scanCode:'', scanType:p.scan||'',
+    pregnancy:p.pregnancy||'No', lmp:p.lmp||'', edd:'',
+    scanCode:p.scanCode||'', scanType:p.scan||'',
     scanPrice:parseFloat(p.amount)||0, advance:0,
     amountPaid:parseFloat(p.amount)||0, additional:0,
     discount:0, totalPayable:parseFloat(p.amount)||0,
     netPaid:parseFloat(p.amount)||0, pending:0,
     serial:p.serial||'', dateTime:p.date||'',
-    paymentMethod:p.payment||'Cash', token:p.token||''
+    paymentMethod:p.payment||'Cash', token:p.token||'',
+    // NEW: carry photo URL through so report generation fetches it
+    _patient_photo_url: p._patient_photo_url || '',
+    _bill_ref: p.billRef || '',
+    _visit_id: p.visitId || ''
   };
   pendingFields=fields;
   showConfirmPanel(fields,[],false);
-  markQueueStatus(p.token,'scanning');
+  if (p.token) markQueueStatus(p.token,'scanning');
 }
 
 async function markQueueStatus(tok, status){
@@ -2542,6 +2580,463 @@ function tlibBlock_pageBreak() {
   return new docx.Paragraph({ children:[new docx.TextRun({ text:'', break:1 })], pageBreakBefore:true });
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  PHASE 2 ADDITIONS — DIRECTIVE BUILDERS
+//  Resolves [gaTable] / [biometryTable] / [ntMarkersTable] /
+//           [fetalEnvTable] / [asDetectionTable] / [feDetectionTable] /
+//           [include: pregnancy-declaration]
+// ════════════════════════════════════════════════════════════════════
+
+// Theme-aware cell builders for new rich tables ──────────────────────
+function _tcell(opts) {
+  return new docx.TableCell({
+    borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB },
+    margins: { top: 30, bottom: 30, left: 70, right: 70 },
+    width: { size: opts.w, type: docx.WidthType.DXA },
+    shading: opts.fill ? { fill: opts.fill, type: docx.ShadingType.CLEAR } : undefined,
+    children: [new docx.Paragraph({
+      alignment: opts.center ? docx.AlignmentType.CENTER : docx.AlignmentType.LEFT,
+      spacing: { before: 0, after: 0 },
+      children: opts.runs
+    })]
+  });
+}
+function _tHdr(text, w, theme) {
+  return _tcell({
+    w, fill: theme.bg, center: true,
+    runs: [new docx.TextRun({ text, size: 18, font: 'Calibri', color: theme.fg, bold: true })]
+  });
+}
+function _tLbl(text, w) {
+  return _tcell({
+    w, fill: 'F8F8F8',
+    runs: [new docx.TextRun({ text, size: 19, font: 'Calibri', color: '333333', bold: true })]
+  });
+}
+function _tVal(parts, w) {
+  return _tcell({ w, runs: parts });
+}
+function _tAlt(text, size) {
+  return new docx.TextRun({ text, italics: true, size: size || 20, font: 'Cambria', color: '111111' });
+}
+function _tBlank() {
+  return new docx.TextRun({ text: '\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0', underline: { type: 'single', color: '666666' }, size: 21, font: 'Calibri' });
+}
+function _tStr(text, opts) {
+  return new docx.TextRun(Object.assign({ text, size: 21, font: 'Calibri', color: '111111' }, opts || {}));
+}
+const TLIB_FULL_W = 10772;
+const tlibLB = { style: docx.BorderStyle.SINGLE, size: 3, color: 'AAAAAA' };
+
+// ── DIRECTIVE: [gaTable] ──────────────────────────────────────────
+// LMP ↔ USG cross-reference. 6 columns, 2 rows.
+function tlibDirective_gaTable(theme) {
+  const w = Math.floor(TLIB_FULL_W / 6);
+  const wLast = TLIB_FULL_W - 5 * w;
+  const cols = [w, w, w, w, w, wLast];
+  return new docx.Table({
+    width: { size: TLIB_FULL_W, type: docx.WidthType.DXA },
+    columnWidths: cols,
+    borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB, insideHorizontal: tlibLB, insideVertical: tlibLB },
+    rows: [
+      new docx.TableRow({ children: [
+        _tHdr('LMP Date', cols[0], theme), _tHdr('LMP GA', cols[1], theme),
+        _tHdr('LMP EDD', cols[2], theme), _tHdr('USG GA', cols[3], theme),
+        _tHdr('USG EDD', cols[4], theme), _tHdr('Concordance', cols[5], theme)
+      ]}),
+      new docx.TableRow({ children: cols.map(c => _tcell({ w: c, runs: [_tStr('')] })) })
+    ]
+  });
+}
+
+// ── DIRECTIVE: [biometryTable] (NT scan) ──────────────────────────
+// CRL · BPD · FL with measurement, GA correspondence, reference range
+function tlibDirective_biometryTable(theme) {
+  const W_PARAM = 1500, W_MEAS = 1500, W_GA = 1500;
+  const W_REF = TLIB_FULL_W - W_PARAM - W_MEAS - W_GA;
+  const cols = [W_PARAM, W_MEAS, W_GA, W_REF];
+  function dataRow(param, refText) {
+    return new docx.TableRow({ children: [
+      _tLbl(param, cols[0]),
+      _tcell({ w: cols[1], runs: [_tStr('')] }),
+      _tcell({ w: cols[2], runs: [_tStr('')] }),
+      _tcell({ w: cols[3], runs: [_tAlt(refText, 19)] })
+    ]});
+  }
+  return new docx.Table({
+    width: { size: TLIB_FULL_W, type: docx.WidthType.DXA },
+    columnWidths: cols,
+    borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB, insideHorizontal: tlibLB, insideVertical: tlibLB },
+    rows: [
+      new docx.TableRow({ children: [
+        _tHdr('Parameter', cols[0], theme), _tHdr('Measurement', cols[1], theme),
+        _tHdr('Corresponds to', cols[2], theme), _tHdr('Reference range', cols[3], theme)
+      ]}),
+      dataRow('CRL', '45–84 mm  (11–13⁺⁶ wks)'),
+      dataRow('BPD', 'Hadlock'),
+      dataRow('FL',  'Hadlock')
+    ]
+  });
+}
+
+// ── DIRECTIVE: [ntMarkersTable] ───────────────────────────────────
+// Genetic markers: NT, NB, IT, DV, TR, FA, FHR + value + normal reference
+function tlibDirective_ntMarkersTable(theme) {
+  const W_LBL = 2800, W_VAL = 2000;
+  const W_REF = TLIB_FULL_W - W_LBL - W_VAL;
+  const cols = [W_LBL, W_VAL, W_REF];
+  function dataRow(label, refText) {
+    return new docx.TableRow({ children: [
+      _tLbl(label, cols[0]),
+      _tcell({ w: cols[1], runs: [_tStr('')] }),
+      _tcell({ w: cols[2], runs: [_tAlt(refText, 19)] })
+    ]});
+  }
+  return new docx.Table({
+    width: { size: TLIB_FULL_W, type: docx.WidthType.DXA },
+    columnWidths: cols,
+    borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB, insideHorizontal: tlibLB, insideVertical: tlibLB },
+    rows: [
+      new docx.TableRow({ children: [
+        _tHdr('Genetic Marker', cols[0], theme),
+        _tHdr('Value', cols[1], theme),
+        _tHdr('Normal reference', cols[2], theme)
+      ]}),
+      dataRow('Nuchal Translucency (NT)', '< 95th centile for CRL  (typically < 2.5 mm)'),
+      dataRow('Nasal Bone (NB)',          'Present  ·  measurable'),
+      dataRow('Intracranial Translucency (IT)', 'Visible  ·  4th ventricle open'),
+      dataRow('Ductus Venosus a-wave',    'Antegrade  (positive a-wave)'),
+      dataRow('Tricuspid Regurgitation',  'Absent'),
+      dataRow('Facial Angle (FA)',        '< 85°'),
+      dataRow('Fetal Heart Rate',         '110–180 bpm  (regular rhythm)')
+    ]
+  });
+}
+
+// ── DIRECTIVE: [fetalEnvTable] (Anomaly / Growth scan) ────────────
+// Placenta · AFI · SVP · Cord · Presentation · FHR · EFW
+function tlibDirective_fetalEnvTable(theme) {
+  const W_LBL = 1900;
+  const W_VAL = (TLIB_FULL_W - 2 * W_LBL) / 2;
+  const cols = [W_LBL, W_VAL, W_LBL, W_VAL];
+  return new docx.Table({
+    width: { size: TLIB_FULL_W, type: docx.WidthType.DXA },
+    columnWidths: cols,
+    borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB, insideHorizontal: tlibLB, insideVertical: tlibLB },
+    rows: [
+      new docx.TableRow({ children: [
+        _tLbl('Placenta', cols[0]),
+        _tVal([_tAlt('Anterior / Posterior / Fundal', 20)], cols[1]),
+        _tLbl('Position', cols[2]),
+        _tVal([_tAlt('Not low lying / Low lying', 20)], cols[3])
+      ]}),
+      new docx.TableRow({ children: [
+        _tLbl('AFI', cols[0]),
+        _tVal([_tStr(''), _tStr(' cm', { size: 19, color: '555555' })], cols[1]),
+        _tLbl('SVP', cols[2]),
+        _tVal([_tStr(''), _tStr(' cm', { size: 19, color: '555555' })], cols[3])
+      ]}),
+      new docx.TableRow({ children: [
+        _tLbl('Umbilical Cord', cols[0]),
+        _tVal([_tAlt('Three-vessel cord / Two-vessel cord', 20)], cols[1]),
+        _tLbl('Loop Around Neck', cols[2]),
+        _tVal([_tAlt('Absent / Single loop / Multiple loops', 20)], cols[3])
+      ]}),
+      new docx.TableRow({ children: [
+        _tLbl('Presentation', cols[0]),
+        _tVal([_tAlt('Cephalic / Breech / Transverse', 20)], cols[1]),
+        _tLbl('Fetal Spine', cols[2]),
+        _tVal([_tAlt('Right lateral / Left lateral / Anterior / Posterior', 19)], cols[3])
+      ]}),
+      new docx.TableRow({ children: [
+        _tLbl('Fetal Heart Rate', cols[0]),
+        _tVal([_tStr(''), _tStr(' bpm', { size: 19, color: '555555' })], cols[1]),
+        _tLbl('Estimated Fetal Weight', cols[2]),
+        _tVal([_tStr(''), _tStr(' g  ± ', { size: 19, color: '555555' }), _tStr(''), _tStr(' g', { size: 19, color: '555555' })], cols[3])
+      ]})
+    ]
+  });
+}
+
+// ── DIRECTIVE: [include: pregnancy-declaration] ───────────────────
+// Doctor declaration + disclaimer + pledge + patient questionnaire +
+// "Doctor explained to me" + signature line. All in Kannada (Tunga font).
+function tlibDirective_pregnancyDeclaration(theme) {
+  const elems = [];
+
+  // Doctor's declaration
+  elems.push(new docx.Paragraph({
+    spacing: { before: 100, after: 30, line: 240 },
+    border: { top: { style: docx.BorderStyle.DASHED, size: 4, color: 'AAAAAA' } },
+    shading: { fill: 'FAFAFA', type: docx.ShadingType.CLEAR },
+    children: [
+      new docx.TextRun({ text: '⚕  ', size: 18, color: '1A237E' }),
+      new docx.TextRun({ text: 'ವೈದ್ಯರ ಘೋಷಣೆ / Declaration by the Person Conducting Ultrasonography', bold: true, size: 17, font: 'Tunga', color: '1A237E' })
+    ]
+  }));
+  elems.push(new docx.Paragraph({
+    spacing: { before: 0, after: 30, line: 280 },
+    children: [new docx.TextRun({
+      text: 'ನಾನು ಡಾ. ಸತೀಶ್ ಬಿ., Dr L G Krishna Ultrasound Clinic, ಶಿರಸಿ ಸೆಂಟರ್‌ನಲ್ಲಿ ಈ ರೋಗಿಯ ಮೇಲೆ ಅಲ್ಟ್ರಾಸೋನೋಗ್ರಫಿ / ಇಮೇಜ್ ಸ್ಕ್ಯಾನಿಂಗ್ ನಡೆಸುವಾಗ, ನಾನು ಯಾವುದೇ ರೀತಿಯಲ್ಲಿ ಆಕೆಯ ಭ್ರೂಣದ ಲಿಂಗವನ್ನು ಪತ್ತೆ ಮಾಡಿಲ್ಲ ಅಥವಾ ಯಾರಿಗೂ ಬಹಿರಂಗಪಡಿಸಿಲ್ಲ ಎಂದು ಘೋಷಿಸುತ್ತೇನೆ.',
+      font: 'Tunga', size: 18, color: '111111'
+    })]
+  }));
+  elems.push(new docx.Paragraph({
+    spacing: { before: 0, after: 30, line: 280 },
+    children: [
+      new docx.TextRun({ text: 'ಸೂಚನೆ: ', bold: true, font: 'Tunga', size: 18, color: '8B2842' }),
+      new docx.TextRun({
+        text: 'ಎಲ್ಲಾ ಜನ್ಮಜಾತ ವೈಪರೀತ್ಯಗಳನ್ನು ಅಲ್ಟ್ರಾಸೌಂಡ್ ಮೂಲಕ ಕಂಡುಹಿಡಿಯಲಾಗುವುದಿಲ್ಲ. ಪತ್ತೆ ಮಾಡಬಹುದಾದವುಗಳು ಗರ್ಭಾವಸ್ಥೆಯ ವಯಸ್ಸು, ಆಮ್ನಿಯೋಟಿಕ್ ದ್ರವ, ಭ್ರೂಣದ ಸ್ಥಾನ ಮತ್ತು ತಾಯಿಯ ದೇಹದ ಅಭ್ಯಾಸವನ್ನು ಅವಲಂಬಿಸಿರುತ್ತದೆ.',
+        font: 'Tunga', size: 18, color: '111111'
+      })
+    ]
+  }));
+  elems.push(new docx.Paragraph({
+    spacing: { before: 0, after: 60, line: 280 },
+    children: [
+      new docx.TextRun({ text: 'ಪ್ರತಿಜ್ಞೆ: ', bold: true, font: 'Tunga', size: 18, color: '2D6A4F' }),
+      new docx.TextRun({
+        text: 'ರೋಗಿಯ ಕುಟುಂಬದಲ್ಲಿ ಅಮೂಲ್ಯವಾದ ಹೊಸ ಜೀವನವನ್ನು ಪರಿಗಣಿಸಿ, ಭ್ರೂಣವನ್ನು ಸ್ಕ್ಯಾನಿಂಗ್ ಮಾಡಲು ಸಾಕಷ್ಟು ಬೆಲೆಬಾಳುವ ಸಮಯದೊಂದಿಗೆ ಗುಣಮಟ್ಟದ ಅಲ್ಟ್ರಾಸೌಂಡ್ ಅನ್ನು ಮಾತ್ರ ಮಾಡುತ್ತೇನೆ ಎಂದು ಪ್ರತಿಜ್ಞೆ ಮಾಡುತ್ತೇನೆ.',
+        font: 'Tunga', size: 18, color: '111111'
+      })
+    ]
+  }));
+
+  // Patient questionnaire header
+  elems.push(new docx.Paragraph({
+    spacing: { before: 100, after: 30, line: 240 },
+    border: { top: { style: docx.BorderStyle.DASHED, size: 4, color: 'AAAAAA' } },
+    shading: { fill: 'F0F7FF', type: docx.ShadingType.CLEAR },
+    children: [
+      new docx.TextRun({ text: '📋  ', size: 18 }),
+      new docx.TextRun({ text: 'ಗರ್ಭಿಣಿ ಮಹಿಳೆಗೆ ಪ್ರಶ್ನಾವಳಿ / Patient Questionnaire', bold: true, size: 17, font: 'Tunga', color: '1A237E' })
+    ]
+  }));
+
+  function _patFieldYesNo(kannadaLabel) {
+    return new docx.Paragraph({
+      spacing: { before: 30, after: 30, line: 280 },
+      indent: { left: 200 },
+      children: [
+        new docx.TextRun({ text: '•  ', bold: true, size: 21, color: '6A1B9A' }),
+        new docx.TextRun({ text: kannadaLabel, font: 'Tunga', size: 18, color: '111111' }),
+        new docx.TextRun({ text: '   ', size: 21 }),
+        new docx.TextRun({ text: '☐ ', size: 21, font: 'Calibri' }),
+        new docx.TextRun({ text: 'ಹೌದು    ', font: 'Tunga', size: 19 }),
+        new docx.TextRun({ text: '☐ ', size: 21, font: 'Calibri' }),
+        new docx.TextRun({ text: 'ಇಲ್ಲ', font: 'Tunga', size: 19 })
+      ]
+    });
+  }
+  elems.push(_patFieldYesNo('ಇದು ಮೊದಲ ಗರ್ಭಧಾರಣೆ?  (Is this the first pregnancy?)  '));
+  elems.push(_patFieldYesNo('ಎಲ್ಲಾ ಪೂರ್ವ ಸ್ಕ್ಯಾನ್ ವರದಿಗಳನ್ನು ತೋರಿಸಲಾಗಿದೆಯೇ?  (All prior scan reports shown?)  '));
+  elems.push(_patFieldYesNo('ಹಿಂದಿನ ಸ್ಕ್ಯಾನ್ ವರದಿಗಳು ಸಾಮಾನ್ಯ?  (Were prior scans normal?)  '));
+  elems.push(_patFieldYesNo('ಹಿಂದಿನ ಗರ್ಭಪಾತಗಳು?  (Previous abortions?)  '));
+  elems.push(_patFieldYesNo('ಹಿಂದಿನ ಜನ್ಮಜಾತ ಅಸಹಜ ಭ್ರೂಣಗಳು?  (Previous congenital anomalies?)  '));
+
+  // Doctor explained
+  elems.push(new docx.Paragraph({
+    spacing: { before: 50, after: 20, line: 280 },
+    children: [new docx.TextRun({ text: 'ವೈದ್ಯರು ನನಗೆ ವಿವರಿಸಿದರು / The doctor has explained to me:', bold: true, font: 'Tunga', size: 18, color: '1A237E' })]
+  }));
+  function _explainItem(num, kn) {
+    return new docx.Paragraph({
+      spacing: { before: 20, after: 20, line: 280 },
+      indent: { left: 300 },
+      children: [
+        new docx.TextRun({ text: num + ')  ', bold: true, size: 19, color: '6A1B9A' }),
+        new docx.TextRun({ text: kn, font: 'Tunga', size: 18, color: '111111' })
+      ]
+    });
+  }
+  elems.push(_explainItem('1', 'ಈ ಸ್ಕ್ಯಾನ್ ಸಮಯದಲ್ಲಿ ಭ್ರೂಣದ ಅಂಗರಚನಾಶಾಸ್ತ್ರದ ಮೌಲ್ಯಮಾಪನವು ಭ್ರೂಣದ ಸ್ಥಾನ, ಆಮ್ನಿಯೋಟಿಕ್ ದ್ರವ ಮತ್ತು ಗರ್ಭಾವಸ್ಥೆಯ ವಯಸ್ಸನ್ನು ಅವಲಂಬಿಸಿ ಸೀಮಿತವಾಗಿರುತ್ತದೆ.'));
+  elems.push(_explainItem('2', 'ಈ ಅಧ್ಯಯನದ ಮುಖ್ಯ ಅಂಶವೆಂದರೆ ಬೆಳವಣಿಗೆಯ ಮೇಲ್ವಿಚಾರಣೆ, ಆಮ್ನಿಯೋಟಿಕ್ ದ್ರವ, ಭ್ರೂಣದ ಸ್ಥಾನ ಮತ್ತು ಶಾರೀರಿಕ ಘಟನೆಗಳ ಮೇಲ್ವಿಚಾರಣೆ.'));
+  elems.push(_explainItem('3', 'ಅಭಿವೃದ್ಧಿಶೀಲ ಅಸಂಗತತೆಗಳು ಗೋಚರಿಸಿದರೆ, ಅವುಗಳನ್ನು ವೈಜ್ಞಾನಿಕ ಮಾನದಂಡಗಳ ಒಳಗೆ ಉಲ್ಲೇಖಿಸಲಾಗುತ್ತದೆ.'));
+  elems.push(_explainItem('4', 'ಈ ಅಧ್ಯಯನದ ಮಿತಿಯನ್ನು ನಾನು ಅರ್ಥಮಾಡಿಕೊಂಡಿದ್ದೇನೆ.'));
+
+  // Signature
+  elems.push(new docx.Paragraph({
+    spacing: { before: 80, after: 0, line: 280 },
+    indent: { left: 200 },
+    children: [
+      new docx.TextRun({ text: 'ರೋಗಿಯ ಹೆಸರು ಮತ್ತು ಸಹಿ (Patient Name & Signature): ', bold: true, font: 'Tunga', size: 18, color: '111111' }),
+      new docx.TextRun({ text: '\u00A0'.repeat(50), underline: { type: 'single', color: '666666' }, size: 21, font: 'Calibri' }),
+      new docx.TextRun({ text: '       ದಿನಾಂಕ (Date): ', bold: true, font: 'Tunga', size: 18, color: '111111' }),
+      new docx.TextRun({ text: '\u00A0'.repeat(20), underline: { type: 'single', color: '666666' }, size: 21, font: 'Calibri' })
+    ]
+  }));
+
+  return elems;
+}
+
+// ── DIRECTIVE: [include: as-detection-table] (Anomaly Scan) ───────
+// Keep brief — full disclaimer table inline in markdown is impractical
+function tlibDirective_asDetectionTable(theme) {
+  return _tlibDetectionTable(theme, 'Anomaly Scan — Detection Rates & Limitations',
+    'Mid-trimester ultrasound is the best non-invasive screening tool for fetal structural anomalies. Detection rates vary by organ system, fetal position, gestational age, maternal habitus, equipment and operator experience. Published international averages (ISUOG / RCOG / SMFM):',
+    [
+      ['Central Nervous System',     '80–90%',  '2D6A4F', 'Subtle cortical malformations, agenesis of corpus callosum (often diagnosed late), mild ventriculomegaly, microcephaly, late-evolving neuronal migration disorders.'],
+      ['Heart (4-chamber + outflow)','60–80%',  'A04500', 'Small VSDs, valvular stenoses, coarctation of aorta, total/partial anomalous pulmonary venous return, hypoplastic arches, lesions evolving in 3rd trimester.'],
+      ['Face & Lip',                 '70–85%',  '2D6A4F', 'Isolated cleft palate (without lip involvement) — published detection rate < 30%. Micrognathia may evolve later.'],
+      ['Spine',                      '85–95%',  '2D6A4F', 'Closed spinal dysraphism (skin-covered defects), small sacral lesions, tethered cord may be missed.'],
+      ['Thorax & Lungs',             '60–80%',  'A04500', 'Small CCAM/CPAM, sequestration, diaphragmatic hernia (may evolve later), small pleural effusions.'],
+      ['Abdomen — GI tract',         '40–60%',  '8B2842', 'Distal large-intestine pathology (anorectal malformations, Hirschsprung), intestinal atresias (better detected in 3rd trimester), small omphaloceles.'],
+      ['Kidneys & Urinary Tract',    '80–90%',  '2D6A4F', 'Mild pelviectasis (may resolve or progress), small renal cysts, late-onset hydronephrosis, posterior urethral valves (often manifest later).'],
+      ['Limbs (long bones)',         '80–90%',  '2D6A4F', 'Subtle skeletal dysplasias may not be apparent at this gestation; mild rhizomelia, isolated radial-ray defects.'],
+      ['Hands & Feet — Digits',      '30–50%',  '8B2842', 'Polydactyly, syndactyly, abnormal positioning. Best evaluated during the NT scan when fingers/toes are clearly seen.'],
+      ['Genitalia (descriptive)',    '—',       '555555', 'Sex of fetus is neither determined nor disclosed — PCPNDT Act compliant.'],
+      ['Soft markers (overall)',     'Variable','555555', 'Echogenic intracardiac focus, mild ventriculomegaly, choroid plexus cysts, echogenic bowel — may be benign in isolation but warrant correlation with biochemistry / risk factors.']
+    ],
+    [
+      'Anorectal and distal large-intestine abnormalities — better evaluated at 28–30 weeks.',
+      'Tiny cardiac septal defects, valve dysplasias and progressive cardiac lesions — may evolve and need 3rd-trimester echo / postnatal echocardiogram.',
+      'Isolated cleft palate without lip involvement and without family history — detection rate is low (< 30%).',
+      'Late-evolving CNS lesions (cortical migration disorders, agenesis of corpus callosum, microcephaly).',
+      'Skeletal dysplasias of late onset — may only become apparent in the third trimester.',
+      'Genetic / chromosomal abnormalities without structural markers — ultrasound cannot exclude these; consider NIPT or invasive testing if clinically indicated.',
+      'Functional or metabolic disorders — these cannot be assessed by imaging alone.'
+    ],
+    'This study should always be interpreted in conjunction with prior and subsequent ultrasound studies, maternal serum biochemistry where available, and the broader clinical and family history. A normal anomaly scan reduces — but does not eliminate — the risk of fetal abnormality. Re-evaluation may be needed if any concern arises during subsequent antenatal monitoring.'
+  );
+}
+
+// ── DIRECTIVE: [include: fe-detection-table] (Fetal Echo) ─────────
+function tlibDirective_feDetectionTable(theme) {
+  return _tlibDetectionTable(theme, 'Fetal Echocardiography — Detection Rates & Limitations',
+    'Fetal echocardiography is the most sensitive antenatal screening tool for cardiac structural anomalies, but detection is influenced by fetal position, lie, gestational age, maternal habitus and equipment. Some lesions evolve only in the third trimester or postnatally. Published-data summary (AHA / ISUOG):',
+    [
+      ['Major structural defects (HLHS, AVSD, single ventricle, TGA)', '80–95%', '2D6A4F', 'Best detected when 4-chamber + outflow tract views are clearly obtained.'],
+      ['Tetralogy of Fallot',                                          '70–85%', '2D6A4F', 'Subtle outflow disproportion may evolve in 3rd trimester.'],
+      ['Coarctation of aorta',                                         '40–60%', '8B2842', 'Often progressive; may be undetectable until ductal closure after birth.'],
+      ['Small VSD (< 3 mm)',                                           '30–50%', '8B2842', 'Limited by acoustic windows and fetal position. Many close spontaneously.'],
+      ['Small ASD / patent foramen ovale',                             'Not assessable', '8B2842', 'Foramen ovale is patent normally in fetal life — true ASDs require postnatal echo.'],
+      ['Valvular stenosis (mild) / dysplasia',                         '40–70%', 'A04500', 'Mild lesions may be missed; functional assessment is limited antenatally.'],
+      ['Total / partial anomalous pulmonary venous return',            '30–60%', '8B2842', 'Pulmonary veins difficult to interrogate; high index of suspicion needed.'],
+      ['Cardiomyopathies / functional disorders',                      'Late-onset', '8B2842', 'Often manifest in 3rd trimester or postnatally.'],
+      ['Arrhythmias',                                                  'At time of scan', 'A04500', 'Only intermittent rhythm at time of study is captured; sustained 24-hour rhythm not assessed.']
+    ],
+    [
+      'A normal fetal echo significantly reduces — but does not eliminate — the risk of major congenital heart disease.',
+      'Small septal defects, valvular issues and progressive lesions may only manifest in the 3rd trimester or postnatally.',
+      'A postnatal echocardiogram is advised in all high-risk pregnancies (maternal diabetes, family history of CHD, abnormal NT, suspected anomaly elsewhere) and where any antenatal concern is raised.',
+      'This report should be reviewed by your obstetrician / paediatrician as part of the complete clinical picture.'
+    ],
+    null
+  );
+}
+
+// Shared detection-table builder used by AS / FE
+function _tlibDetectionTable(theme, header, intro, rows, caveats, closing) {
+  const out = [];
+
+  // Header
+  out.push(new docx.Paragraph({
+    spacing: { before: 100, after: 30, line: 240 },
+    border: { top: { style: docx.BorderStyle.DASHED, size: 4, color: 'AAAAAA' } },
+    shading: { fill: 'FFF8E0', type: docx.ShadingType.CLEAR },
+    children: [
+      new docx.TextRun({ text: '⚕  ', size: 18, color: '1A237E' }),
+      new docx.TextRun({ text: header, bold: true, size: 19, font: 'Calibri', color: '1A237E' })
+    ]
+  }));
+
+  // Intro paragraph
+  out.push(new docx.Paragraph({
+    spacing: { before: 0, after: 50, line: 280 },
+    children: [new docx.TextRun({ text: intro, size: 18, font: 'Calibri', color: '111111' })]
+  }));
+
+  // Detection table
+  function dHdr(text, w) {
+    return new docx.TableCell({
+      borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB },
+      margins: { top: 30, bottom: 30, left: 70, right: 70 },
+      width: { size: w, type: docx.WidthType.DXA },
+      shading: { fill: 'FFF0CC', type: docx.ShadingType.CLEAR },
+      children: [new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new docx.TextRun({ text, size: 17, font: 'Calibri', color: '8A6500', bold: true })] })]
+    });
+  }
+  function dLbl(text, w) {
+    return new docx.TableCell({
+      borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB },
+      margins: { top: 30, bottom: 30, left: 70, right: 70 },
+      width: { size: w, type: docx.WidthType.DXA },
+      shading: { fill: 'FFFBEE', type: docx.ShadingType.CLEAR },
+      children: [new docx.Paragraph({ spacing: { before: 0, after: 0 }, children: [new docx.TextRun({ text, size: 18, font: 'Calibri', color: '111111', bold: true })] })]
+    });
+  }
+  function dRate(text, w, color) {
+    return new docx.TableCell({
+      borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB },
+      margins: { top: 30, bottom: 30, left: 70, right: 70 },
+      width: { size: w, type: docx.WidthType.DXA },
+      children: [new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { before: 0, after: 0 }, children: [new docx.TextRun({ text, size: 18, font: 'Calibri', color, bold: true })] })]
+    });
+  }
+  function dNote(text, w) {
+    return new docx.TableCell({
+      borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB },
+      margins: { top: 30, bottom: 30, left: 70, right: 70 },
+      width: { size: w, type: docx.WidthType.DXA },
+      children: [new docx.Paragraph({ spacing: { before: 0, after: 0 }, children: [new docx.TextRun({ text, size: 17, font: 'Calibri', color: '111111' })] })]
+    });
+  }
+
+  const W_PATH = 2700, W_RATE = 1400;
+  const W_NOTE = TLIB_FULL_W - W_PATH - W_RATE;
+  const dCols = [W_PATH, W_RATE, W_NOTE];
+
+  out.push(new docx.Table({
+    width: { size: TLIB_FULL_W, type: docx.WidthType.DXA },
+    columnWidths: dCols,
+    borders: { top: tlibLB, bottom: tlibLB, left: tlibLB, right: tlibLB, insideHorizontal: tlibLB, insideVertical: tlibLB },
+    rows: [
+      new docx.TableRow({ children: [dHdr('Pathology / Region', dCols[0]), dHdr('Detection rate', dCols[1]), dHdr('Limitations / what may be missed', dCols[2])] }),
+      ...rows.map(r => new docx.TableRow({ children: [dLbl(r[0], dCols[0]), dRate(r[1], dCols[1], r[2]), dNote(r[3], dCols[2])] }))
+    ]
+  }));
+
+  // Caveats
+  out.push(new docx.Paragraph({
+    spacing: { before: 80, after: 30, line: 280 },
+    children: [new docx.TextRun({ text: 'Important caveats:  ', bold: true, size: 18, font: 'Calibri', color: '1A237E' })]
+  }));
+  caveats.forEach(c => {
+    out.push(new docx.Paragraph({
+      spacing: { before: 0, after: 30, line: 280 },
+      indent: { left: 200 },
+      children: [
+        new docx.TextRun({ text: '•  ', bold: true, size: 19, color: '6A1B9A' }),
+        new docx.TextRun({ text: c, size: 18, font: 'Calibri', color: '111111' })
+      ]
+    }));
+  });
+
+  if (closing) {
+    out.push(new docx.Paragraph({
+      spacing: { before: 60, after: 50, line: 280 },
+      children: [new docx.TextRun({ text: closing, size: 18, font: 'Calibri', color: '111111', italics: true })]
+    }));
+  }
+
+  return out;
+}
+
+// ── MASTER DIRECTIVE RESOLVER ─────────────────────────────────────
+function tlibResolveDirective(name, theme) {
+  switch (name) {
+    case 'gaTable':              return tlibDirective_gaTable(theme);
+    case 'biometryTable':        return tlibDirective_biometryTable(theme);
+    case 'ntMarkersTable':       return tlibDirective_ntMarkersTable(theme);
+    case 'fetalEnvTable':        return tlibDirective_fetalEnvTable(theme);
+    case 'pregnancy-declaration':return tlibDirective_pregnancyDeclaration(theme);
+    case 'as-detection-table':   return tlibDirective_asDetectionTable(theme);
+    case 'fe-detection-table':   return tlibDirective_feDetectionTable(theme);
+    default: return null;
+  }
+}
+
+
 // Main parser
 function tlibParse(md) {
   const lines = md.split(/\r?\n/);
@@ -2583,13 +3078,25 @@ function tlibParse(md) {
     // [pageBreak]
     if (t === '[pageBreak]') { elems.push(tlibBlock_pageBreak()); i++; continue; }
 
-    // [include: name] — flag for host resolution
+    // [include: name] — resolve directive inline (gaTable / biometryTable / ntMarkersTable / fetalEnvTable / pregnancy-declaration / as-detection-table / fe-detection-table)
     const incM = t.match(/^\[include:\s*([\w\-]+)\]$/);
-    if (incM) { includes.push({ name: incM[1], pos: elems.length }); i++; continue; }
+    if (incM) {
+      const themeForDir = TLIB_THEMES[meta.theme || 'saffron'] || TLIB_THEMES.saffron;
+      const resolved = (typeof tlibResolveDirective === 'function') ? tlibResolveDirective(incM[1], themeForDir) : null;
+      if (resolved) (Array.isArray(resolved) ? resolved : [resolved]).forEach(e => elems.push(e));
+      else includes.push({ name: incM[1], pos: elems.length }); // fallback flag
+      i++; continue;
+    }
 
-    // [gaTable], [biometryTable], [ntMarkersTable], [fetalEnvTable] — built-in tables
+    // [gaTable], [biometryTable], [ntMarkersTable], [fetalEnvTable] — resolve built-in tables inline
     const tblM = t.match(/^\[(\w+Table)\]$/);
-    if (tblM) { includes.push({ name: tblM[1], pos: elems.length }); i++; continue; }
+    if (tblM) {
+      const themeForTbl = TLIB_THEMES[meta.theme || 'saffron'] || TLIB_THEMES.saffron;
+      const resolved = (typeof tlibResolveDirective === 'function') ? tlibResolveDirective(tblM[1], themeForTbl) : null;
+      if (resolved) (Array.isArray(resolved) ? resolved : [resolved]).forEach(e => elems.push(e));
+      else includes.push({ name: tblM[1], pos: elems.length }); // fallback flag
+      i++; continue;
+    }
 
     // Headings
     if (/^#\s/.test(t))   { elems.push(tlibBlock_bigSecHdr(t.replace(/^#\s+/, '')));  i++; continue; }

@@ -799,6 +799,14 @@ async function generateWordReport(fields) {
   if (paramStr) bookingPrefillUrl = bookingUrl + '?' + paramStr;
   const bookingQr = await renderQR(bookingPrefillUrl, 'qr1Canvas', '#000000');
 
+  // ── Bill Details QR — points to the bill view URL ──
+  const billRefForQr = (fields._bill_ref || fields.serial || '').trim();
+  const billViewUrl = billRefForQr ? `https://drlgkscan.github.io/drlgk-clinic/bill?ref=${billRefForQr}` : 'https://drlgkscan.github.io/drlgk-clinic/';
+  let billQrData = null;
+  try {
+    billQrData = await renderQR(billViewUrl, 'qr1Canvas', '#000000');
+  } catch (e) { console.warn('Bill QR render failed', e); }
+
   // ─── BORDER CONSTANTS ───
   const NB={style:BorderStyle.NONE,size:0,color:'FFFFFF'};
   const TB={style:BorderStyle.SINGLE,size:4,color:'000000'};
@@ -1151,28 +1159,116 @@ async function generateWordReport(fields) {
     ]})]
   });
 
-  // Main header table — English clinic name with ⚕ flanks + security thread
+  // Main header table — Pratibha-style: clinic name LEFT (Kannada + English stacked) | photo + QR squares RIGHT
+  // Both squares are ~17mm (~6.7 EMU/twip width 1700 DXA), photo on LEFT inside the right cell, Bill QR on RIGHT
+  const SQUARE_PX = 65;  // ~17mm at 96dpi
+  const headerNameW = 6500;   // ~115mm — left cell with clinic name
+  const headerImgsW = FULL_W - headerNameW;  // remaining ~70mm for two 17mm squares + gaps
+  const halfImg = Math.floor(headerImgsW / 2);
+
   const headerTable = new Table({
     width: { size: FULL_W, type: WidthType.DXA },
-    columnWidths: [FULL_W],
+    columnWidths: [headerNameW, headerImgsW],
     borders: { top: NB, bottom: { style: BorderStyle.THICK, size: 12, color: '111111' } },
+    rows: [new TableRow({ children: [
+      // LEFT CELL — Two-line clinic name (small Kannada subtitle + large English)
+      new TableCell({
+        borders: NO_BDR, width: { size: headerNameW, type: WidthType.DXA },
+        verticalAlign: VerticalAlign.TOP,
+        margins: { top: 0, bottom: 30, left: 0, right: 0 },
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.LEFT,
+            spacing: { before: 40, after: 0, line: 240 },
+            children: [
+              new TextRun({ text: 'ಡಾ. ಎಲ್ ಜಿ ಕೃಷ್ಣ ಆಲ್ಟ್ರಾಸೌಂಡ್ ಕ್ಲಿನಿಕ್, ', font: 'Tunga', size: 22, italics: true, color: pal.main }),
+              new TextRun({ text: 'ಸಿರ್ಸಿ', font: 'Tunga', size: 22, italics: true, color: pal.accent })
+            ]
+          }),
+          new Paragraph({
+            alignment: AlignmentType.LEFT,
+            spacing: { before: 30, after: 0, line: 280 },
+            children: [
+              new TextRun({ text: 'Dr L G Krishna Ultrasound Clinic, ', font: 'Calibri', size: 44, bold: true, color: '111111' }),
+              new TextRun({ text: 'Sirsi', font: 'Calibri', size: 44, bold: true, color: pal.accent })
+            ]
+          })
+        ]
+      }),
+      // RIGHT CELL — Two squares side-by-side: Photo + Bill Details QR
+      new TableCell({
+        borders: NO_BDR, width: { size: headerImgsW, type: WidthType.DXA },
+        verticalAlign: VerticalAlign.CENTER,
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        children: [
+          new Table({
+            width: { size: headerImgsW, type: WidthType.DXA },
+            columnWidths: [halfImg, halfImg],
+            borders: NO_BDR,
+            rows: [new TableRow({ children: [
+              // PHOTO square
+              new TableCell({
+                borders: NO_BDR, width: { size: halfImg, type: WidthType.DXA },
+                verticalAlign: VerticalAlign.CENTER,
+                margins: { top: 30, bottom: 0, left: 30, right: 30 },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 0, after: 0 },
+                    children: patientPhotoData ? [
+                      new ImageRun({ data: patientPhotoData, transformation: { width: SQUARE_PX, height: SQUARE_PX }, type: patientPhotoType })
+                    ] : [new TextRun({ text: '', size: 8 })]
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 20, after: 0 },
+                    children: [new TextRun({ text: 'Photo', italics: true, size: 14, color: '888888', font: 'Calibri' })]
+                  })
+                ]
+              }),
+              // BILL DETAILS QR square
+              new TableCell({
+                borders: NO_BDR, width: { size: halfImg, type: WidthType.DXA },
+                verticalAlign: VerticalAlign.CENTER,
+                margins: { top: 30, bottom: 0, left: 30, right: 30 },
+                children: [
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 0, after: 0 },
+                    children: billQrData ? [
+                      new ImageRun({ data: billQrData, transformation: { width: SQUARE_PX, height: SQUARE_PX }, type: 'png' })
+                    ] : [new TextRun({ text: '', size: 8 })]
+                  }),
+                  new Paragraph({
+                    alignment: AlignmentType.CENTER,
+                    spacing: { before: 20, after: 0 },
+                    children: [new TextRun({ text: 'Bill Details', italics: true, size: 14, color: '888888', font: 'Calibri' })]
+                  })
+                ]
+              })
+            ]})]
+          }),
+          // Thread strip below — spans full width of right cell only (kept short)
+          new Paragraph({ spacing: { before: 20, after: 0 }, children: [new TextRun({ text: '', size: 4 })] })
+        ]
+      })
+    ]})]
+  });
+
+  // Security thread strip — separate full-width paragraph that goes BETWEEN headerTable and demoTable
+  const threadStripTable = new Table({
+    width: { size: FULL_W, type: WidthType.DXA },
+    columnWidths: [FULL_W],
+    borders: NO_BDR,
     rows: [new TableRow({ children: [
       new TableCell({
         borders: NO_BDR, width: { size: FULL_W, type: WidthType.DXA },
         margins: { top: 0, bottom: 30, left: 0, right: 0 },
-        children: [
-          new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 80, after: 0, line: 280 }, children: [
-            new TextRun({ text: '─── ⚕ ─── ', font: 'Calibri', size: 36, color: pal.main }),
-            new TextRun({ text: 'Dr L G Krishna Ultrasound Clinic, ', font: 'Calibri', size: 44, bold: true, color: '111111' }),
-            new TextRun({ text: 'Sirsi', font: 'Calibri', size: 44, bold: true, color: pal.accent }),
-            new TextRun({ text: ' ─── ⚕ ───', font: 'Calibri', size: 36, color: pal.main })
-          ]}),
-          new Paragraph({
-            spacing: { before: 60, after: 0, line: 220 },
-            border: { top: { style: BorderStyle.SINGLE, size: 3, color: pal.main }, bottom: { style: BorderStyle.SINGLE, size: 3, color: pal.main } },
-            children: [new TextRun({ text: threadText, size: 10, font: 'Courier New', color: pal.main })]
-          })
-        ]
+        children: [new Paragraph({
+          spacing: { before: 0, after: 0, line: 200 },
+          border: { top: { style: BorderStyle.SINGLE, size: 3, color: pal.main }, bottom: { style: BorderStyle.SINGLE, size: 3, color: pal.main } },
+          children: [new TextRun({ text: threadText, size: 10, font: 'Courier New', color: pal.main })]
+        })]
       })
     ]})]
   });
@@ -1317,37 +1413,19 @@ async function generateWordReport(fields) {
     ]
   });
 
-  // OUTER WRAPPER — innerDemo + gap + photo (photo spans full 5-row height)
+  // FULL-WIDTH WRAPPER — innerDemo only (photo moved to headerTable top-right)
   const demoTable = new Table({
     width: { size: FULL_W, type: WidthType.DXA },
     borders: NO_BDR,
-    columnWidths: [TOTAL_DEMO_W, GAP_W, PHOTO_CELL_W],
+    columnWidths: [FULL_W],
     rows: [new TableRow({
       children: [
         new TableCell({
           borders: NO_BDR,
-          width: { size: TOTAL_DEMO_W, type: WidthType.DXA },
+          width: { size: FULL_W, type: WidthType.DXA },
           verticalAlign: VerticalAlign.TOP,
           margins: { top: 0, bottom: 0, left: 0, right: 0 },
           children: [innerDemo]
-        }),
-        new TableCell({
-          borders: NO_BDR,
-          width: { size: GAP_W, type: WidthType.DXA },
-          children: [new Paragraph({ children: [new TextRun({ text: '', size: 8 })] })]
-        }),
-        new TableCell({
-          borders: ALL_LB,
-          width: { size: PHOTO_CELL_W, type: WidthType.DXA },
-          verticalAlign: VerticalAlign.CENTER,
-          margins: { top: 30, bottom: 30, left: 30, right: 30 },
-          children: [new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 0, after: 0 },
-            children: patientPhotoData ? [
-              new ImageRun({ data: patientPhotoData, transformation: { width: 105, height: 135 }, type: patientPhotoType })
-            ] : [new TextRun({ text: '', size: 8 })]
-          })]
         })
       ]
     })]
@@ -1465,12 +1543,10 @@ async function generateWordReport(fields) {
         page: {
           size: { width: 11906, height: 16838 },
           margin: { top: 720, right: 567, bottom: 720, left: 567, header: 284, footer: 284 }
-        },
-        titlePage: true  // enables headers.first vs headers.default
+        }
       },
       headers: {
-        first: new Header({ children: [topCornerTable, headerTable, demoTable] }),
-        default: new Header({ children: [headerTableContinuation] })
+        default: new Header({ children: [topCornerTable, headerTable, threadStripTable, demoTable] })
       },
       footers: {
         first: new Footer({ children: [footerTable] }),
